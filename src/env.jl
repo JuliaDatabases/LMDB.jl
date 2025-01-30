@@ -60,7 +60,7 @@ end
 """Close the environment and release the memory map"""
 function close(env::Environment)
     if env.handle == C_NULL
-        throw(LMDBError(-1,"Environment is already closed"))
+        @warn "Environment is already closed" handle=env.handle path=env.path
     end
     _mdb_env_close(env.handle)
     env.handle = C_NULL
