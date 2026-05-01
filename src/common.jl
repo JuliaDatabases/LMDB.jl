@@ -17,12 +17,35 @@ MDBValue(val::Base.RefValue{T}) where {T} =
     MDB_val(Csize_t(sizeof(T)),
             Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, val)))
 
-# Auto-box bare `MDB_val` values at `Ptr{MDB_val}` ccall sites. This makes
-# `mdb_put(..., MDBValue(rkey), ...)` work without an explicit `Ref(...)`
-# wrap — equivalent to changing the @ccall signature to `Ref{MDB_val}`
-# (which Clang.jl doesn't emit), routed through `cconvert` instead. Compare
-# `base/refpointer.jl:178` for the same pattern on `Ptr{Ptr}` arg sites.
+# Self-rooted argument for `Ptr{MDB_val}` ccall sites: holds the
+# `Ref{MDB_val}` box and a reference to the data buffer the box's `mv_data`
+# field aliases. Returned from `cconvert` below so ccall's automatic
+# `GC.@preserve` covers both the box and the data — callers never need
+# explicit `Ref(...)`, `MDBValue(...)`, or `GC.@preserve` for input args.
+struct MDBArg{D}
+    box::Base.RefValue{MDB_val}
+    data::D
+end
+Base.unsafe_convert(::Type{Ptr{MDB_val}}, m::MDBArg) =
+    Base.unsafe_convert(Ptr{MDB_val}, m.box)
+
+# Bare `MDB_val` (used for `delete!`'s empty val): heap-box it.
 Base.cconvert(::Type{Ptr{MDB_val}}, x::MDB_val) = Ref(x)
+# Pre-built `Ref{MDB_val}` (used by iterator state, and as the out-param
+# for `get`/`mdb_cursor_get`): ccall reads/writes the box directly.
+Base.cconvert(::Type{Ptr{MDB_val}}, x::Base.RefValue{MDB_val}) = x
+# User input — heap-rooted forms with stable data pointers.
+Base.cconvert(::Type{Ptr{MDB_val}}, x::String)        = MDBArg(Ref(MDBValue(x)), x)
+Base.cconvert(::Type{Ptr{MDB_val}}, x::Array)         = MDBArg(Ref(MDBValue(x)), x)
+Base.cconvert(::Type{Ptr{MDB_val}}, x::Base.RefValue) = MDBArg(Ref(MDBValue(x)), x)
+# User input — bare bitstype scalar. Wrap in a `Ref` to give it a heap
+# address, then build the `MDBArg`. The `Ref` lives in `MDBArg.data` and
+# is rooted by ccall's preserve.
+function Base.cconvert(::Type{Ptr{MDB_val}}, x::T) where {T}
+    isbitstype(T) || throw(MethodError(Base.cconvert, (Ptr{MDB_val}, x)))
+    rx = Ref(x)
+    MDBArg(Ref(MDBValue(rx)), rx)
+end
 
 mbd_unpack(::Type{T}, mdb_val_ref::Ref{MDB_val}) where {T} = _mbd_unpack(T, mdb_val_ref[])
 function _mbd_unpack(::Type{T}, mdb_val::MDB_val) where {T <: String}

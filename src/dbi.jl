@@ -57,30 +57,18 @@ end
 
 "Store items into a database"
 function put!(txn::Transaction, dbi::DBI, key, val; flags::Cuint = zero(Cuint))
-    rkey = isbitstype(typeof(key)) ? Ref(key) : key
-    rval = isbitstype(typeof(val)) ? Ref(val) : val
-    GC.@preserve rkey rval begin
-        check(mdb_put(txn, dbi, MDBValue(rkey), MDBValue(rval), flags))
-    end
+    check(mdb_put(txn, dbi, key, val, flags))
 end
 
 "Delete items from a database"
 function delete!(txn::Transaction, dbi::DBI, key, val=C_NULL)
-    rkey = isbitstype(typeof(key)) ? Ref(key) : key
-    rval = val === C_NULL ? nothing :
-           isbitstype(typeof(val)) ? Ref(val) : val
-    GC.@preserve rkey rval begin
-        val_arg = rval === nothing ? MDBValue() : MDBValue(rval)
-        check(mdb_del(txn, dbi, MDBValue(rkey), val_arg))
-    end
+    val_arg = val === C_NULL ? MDBValue() : val
+    check(mdb_del(txn, dbi, key, val_arg))
 end
 
 "Get items from a database"
 function get(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
-    rkey = isbitstype(typeof(key)) ? Ref(key) : key
-    GC.@preserve rkey begin
-        val_ref = Ref(MDBValue())
-        check(mdb_get(txn, dbi, MDBValue(rkey), val_ref))
-        return mbd_unpack(T, val_ref)
-    end
+    val_ref = Ref(MDBValue())
+    check(mdb_get(txn, dbi, key, val_ref))
+    return mbd_unpack(T, val_ref)
 end
