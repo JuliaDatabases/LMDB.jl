@@ -8,8 +8,10 @@ mutable struct Transaction
     Transaction(h::Ptr{MDB_txn}) = new(h)
 end
 
+Base.unsafe_convert(::Type{Ptr{MDB_txn}}, t::Transaction) = t.handle
+
 function env(txn::Transaction)
-    env_ptr = mdb_txn_env(txn.handle)
+    env_ptr = mdb_txn_env(txn)
     (env_ptr == C_NULL) && return nothing
     return Environment(env_ptr)
 end
@@ -25,8 +27,8 @@ It allows to set transaction flags with `flags` option.
 function start(env::Environment; flags::Cuint=zero(Cuint),
                parent::Union{Transaction,Nothing} = nothing)
     txn_ref = Ref{Ptr{MDB_txn}}(C_NULL)
-    p = parent !== nothing ? parent.handle : Transaction().handle
-    check(mdb_txn_begin(env.handle, p, flags, txn_ref))
+    p = parent === nothing ? C_NULL : parent
+    check(mdb_txn_begin(env, p, flags, txn_ref))
     return Transaction(txn_ref[])
 end
 function start(f::Function, env::Environment; flags::EnvironmentFlags=Cuint(0))
@@ -36,7 +38,7 @@ function start(f::Function, env::Environment; flags::EnvironmentFlags=Cuint(0))
         commit(txn)
         r
     catch e
-        mdb_txn_abort(txn.handle)
+        mdb_txn_abort(txn)
         rethrow(e)
     end
 end
@@ -46,7 +48,7 @@ end
 The transaction and its cursors must not be used after, because its handle is freed.
 """
 function abort(txn::Transaction)
-    mdb_txn_abort(txn.handle)
+    mdb_txn_abort(txn)
     txn.handle = C_NULL
     return
 end
@@ -56,7 +58,7 @@ end
 The transaction and its cursors must not be used after, because its handle is freed.
 """
 function commit(txn::Transaction)
-    check(mdb_txn_commit(txn.handle))
+    check(mdb_txn_commit(txn))
     txn.handle = C_NULL
     return
 end
@@ -66,7 +68,7 @@ end
 Abort the transaction like `abort`, but keep the transaction handle.
 """
 function reset(txn::Transaction)
-    mdb_txn_reset(txn.handle)
+    mdb_txn_reset(txn)
 end
 
 """Renew a read-only transaction
@@ -75,5 +77,5 @@ This acquires a new reader lock for a transaction handle that had been released 
 It must be called before a reset transaction may be used again.
 """
 function renew(txn::Transaction)
-    check(mdb_txn_renew(txn.handle))
+    check(mdb_txn_renew(txn))
 end

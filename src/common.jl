@@ -1,4 +1,3 @@
-const MBDValue = MDB_val
 const EnvironmentFlags = Unsigned
 MDBValue() = MDB_val(zero(Csize_t), C_NULL)
 MDBValue(_::Nothing) = MDBValue()
