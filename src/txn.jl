@@ -9,7 +9,7 @@ mutable struct Transaction
 end
 
 function env(txn::Transaction)
-    env_ptr = _mdb_txn_env(txn.handle)
+    env_ptr = mdb_txn_env(txn.handle)
     (env_ptr == C_NULL) && return nothing
     return Environment(env_ptr)
 end
@@ -26,17 +26,17 @@ function start(env::Environment; flags::Cuint=zero(Cuint),
                parent::Union{Transaction,Nothing} = nothing)
     txn_ref = Ref{Ptr{MDB_txn}}(C_NULL)
     p = parent !== nothing ? parent.handle : Transaction().handle
-    mdb_txn_begin(env.handle, p,  flags, txn_ref)
+    check(mdb_txn_begin(env.handle, p, flags, txn_ref))
     return Transaction(txn_ref[])
 end
-function start(f::Function, env::Environment; flags::EnvironmentFlags=Cuint(0)) 
+function start(f::Function, env::Environment; flags::EnvironmentFlags=Cuint(0))
     txn = start(env, flags=Cuint(flags))
     try
         r = f(txn)
         commit(txn)
         r
     catch e
-        _mdb_txn_abort(txn.handle)
+        mdb_txn_abort(txn.handle)
         rethrow(e)
     end
 end
@@ -46,9 +46,9 @@ end
 The transaction and its cursors must not be used after, because its handle is freed.
 """
 function abort(txn::Transaction)
-    r = _mdb_txn_abort(txn.handle)
+    mdb_txn_abort(txn.handle)
     txn.handle = C_NULL
-    r
+    return
 end
 
 """Commit all the operations of a transaction into the database
@@ -56,9 +56,9 @@ end
 The transaction and its cursors must not be used after, because its handle is freed.
 """
 function commit(txn::Transaction)
-    r = mdb_txn_commit(txn.handle)
+    check(mdb_txn_commit(txn.handle))
     txn.handle = C_NULL
-    r
+    return
 end
 
 """Reset a read-only transaction
@@ -75,5 +75,5 @@ This acquires a new reader lock for a transaction handle that had been released 
 It must be called before a reset transaction may be used again.
 """
 function renew(txn::Transaction)
-    mdb_txn_renew(txn.handle)
+    check(mdb_txn_renew(txn.handle))
 end
