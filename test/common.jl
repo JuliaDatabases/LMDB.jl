@@ -45,7 +45,7 @@ using Test
     val = TestType(1,'a') # struct
     val_size = sizeof(val)
     T = typeof(val)
-    @test_throws ErrorException MDBValue(val)
+    @test_throws MethodError MDBValue(val)
     val = [val]
     mdb_val_ref = Ref(MDBValue(val));
     mdb_val = mdb_val_ref[]
