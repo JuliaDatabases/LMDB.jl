@@ -1,11 +1,18 @@
 """
 A DB environment supports multiple databases, all residing in the same shared-memory map.
+
+Wrapping a raw `Ptr{MDB_env}` in `Environment(h)` takes ownership of the
+handle: it will be closed when the wrapper is garbage-collected, unless
+`close` was already called explicitly. Closing is idempotent.
 """
 mutable struct Environment
     handle::Ptr{MDB_env}
     path::String
-    Environment() = new(C_NULL, "")
-    Environment(h::Ptr{MDB_env}) = new(h, "")
+    function Environment(h::Ptr{MDB_env} = C_NULL)
+        e = new(h, "")
+        finalizer(close, e)
+        return e
+    end
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_env}}, e::Environment) = e.handle

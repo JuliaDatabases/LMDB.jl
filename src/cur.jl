@@ -1,8 +1,18 @@
 """
 A handle to a cursor structure for navigating through a database.
+
+A `Cursor` keeps a reference to its parent `Transaction` to expose it via
+`transaction(cur)` and to keep the txn alive under GC. The cursor's
+finalizer closes any still-open handle.
 """
 mutable struct Cursor
     handle::Ptr{MDB_cursor}
+    txn::Union{Transaction, Nothing}
+    function Cursor(txn::Union{Transaction, Nothing}, h::Ptr{MDB_cursor})
+        c = new(h, txn)
+        finalizer(close, c)
+        return c
+    end
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_cursor}}, c::Cursor) = c.handle
@@ -14,7 +24,7 @@ isopen(cur::Cursor) = cur.handle != C_NULL
 function open(txn::Transaction, dbi::DBI)
     cur_ptr_ref = Ref{Ptr{MDB_cursor}}(C_NULL)
     mdb_cursor_open(txn, dbi, cur_ptr_ref)
-    return Cursor(cur_ptr_ref[])
+    return Cursor(txn, cur_ptr_ref[])
 end
 
 "Wrapper of Cursor `open` for `do` construct"
@@ -40,12 +50,8 @@ function renew(txn::Transaction, cur::Cursor)
     mdb_cursor_renew(txn, cur)
 end
 
-"Return the cursor's transaction"
-function transaction(cur::Cursor)
-    txn_ptr = mdb_cursor_txn(cur)
-    (txn_ptr == C_NULL) && return nothing
-    return Transaction(txn_ptr)
-end
+"Return the cursor's transaction."
+transaction(cur::Cursor) = cur.txn
 
 "Return the cursor's database"
 function database(cur::Cursor)
@@ -91,19 +97,10 @@ Base.iterate(iter::LMDBIterator) = Base.iterate(iter, init_values(iter))
 function Base.iterate(iter::LMDBIterator, refs)
     mdb_key_ref, mdb_val_ref, cursor_op, key_buf = refs
 
-<<<<<<< HEAD
     # key_buf may be aliased by mdb_key_ref (e.g. DirectoryLister or
-    # SET_RANGE seed) and must outlive the C call.
-    ret = GC.@preserve key_buf mdb_cursor_get(iter.cur, mdb_key_ref, mdb_val_ref, cursor_op)
-||||||| parent of 54eb07a (Add @checked macro; auto-throw on tier-1 status returns.)
-    GC.@preserve key_buf begin
-        ret = mdb_cursor_get(iter.cur, mdb_key_ref, mdb_val_ref, cursor_op)
-    end
-=======
-    GC.@preserve key_buf begin
-        ret = unchecked_mdb_cursor_get(iter.cur, mdb_key_ref, mdb_val_ref, cursor_op)
-    end
->>>>>>> 54eb07a (Add @checked macro; auto-throw on tier-1 status returns.)
+    # SET_RANGE seed) and must outlive the C call. unchecked_* because the
+    # iterator branches on MDB_NOTFOUND itself.
+    ret = GC.@preserve key_buf unchecked_mdb_cursor_get(iter.cur, mdb_key_ref, mdb_val_ref, cursor_op)
 
     if ret == 0
         #Check if we are still in key prefix

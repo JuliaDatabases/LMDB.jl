@@ -1,20 +1,26 @@
 """
-A database transaction. Every operation requires a transaction handle.
-All database operations require a transaction handle. Transactions may be read-only or read-write.
+A database transaction. Every database operation requires a transaction.
+Transactions may be read-only or read-write.
+
+A `Transaction` keeps a reference to its parent `Environment`, both to
+expose it via `env(txn)` and to ensure the env outlives the txn under
+GC. If a transaction is dropped without an explicit `commit` or `abort`,
+its finalizer aborts it.
 """
 mutable struct Transaction
     handle::Ptr{MDB_txn}
-    Transaction() = new(C_NULL)
-    Transaction(h::Ptr{MDB_txn}) = new(h)
+    env::Union{Environment, Nothing}
+    function Transaction(env::Union{Environment, Nothing}, h::Ptr{MDB_txn})
+        t = new(h, env)
+        finalizer(_finalize_txn, t)
+        return t
+    end
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_txn}}, t::Transaction) = t.handle
 
-function env(txn::Transaction)
-    env_ptr = mdb_txn_env(txn)
-    (env_ptr == C_NULL) && return nothing
-    return Environment(env_ptr)
-end
+"Return the `Environment` this transaction was started against."
+env(txn::Transaction) = txn.env
 
 "Check if transaction is open."
 isopen(txn::Transaction) = txn.handle != C_NULL
@@ -28,8 +34,8 @@ function start(env::Environment; flags::Cuint=zero(Cuint),
                parent::Union{Transaction,Nothing} = nothing)
     txn_ref = Ref{Ptr{MDB_txn}}(C_NULL)
     p = parent === nothing ? C_NULL : parent
-    mdb_txn_begin(env, p, flags, txn_ref)
-    return Transaction(txn_ref[])
+    mdb_txn_begin(env, p, Cuint(flags), txn_ref)
+    return Transaction(env, txn_ref[])
 end
 function start(f::Function, env::Environment; flags::EnvironmentFlags=Cuint(0))
     txn = start(env, flags=Cuint(flags))
@@ -38,30 +44,38 @@ function start(f::Function, env::Environment; flags::EnvironmentFlags=Cuint(0))
         commit(txn)
         r
     catch e
-        mdb_txn_abort(txn)
+        abort(txn)
         rethrow(e)
     end
 end
 
-"""Abandon all the operations of the transaction instead of saving them
+"""Abandon all the operations of the transaction instead of saving them.
 
 The transaction and its cursors must not be used after, because its handle is freed.
+Idempotent — safe to call after a previous `commit`/`abort` or on a never-opened txn.
 """
 function abort(txn::Transaction)
+    txn.handle == C_NULL && return
     mdb_txn_abort(txn)
     txn.handle = C_NULL
     return
 end
 
-"""Commit all the operations of a transaction into the database
+"""Commit all the operations of a transaction into the database.
 
 The transaction and its cursors must not be used after, because its handle is freed.
+Idempotent.
 """
 function commit(txn::Transaction)
+    txn.handle == C_NULL && return
     mdb_txn_commit(txn)
     txn.handle = C_NULL
     return
 end
+
+# Finalizer: aborts a still-open transaction so it doesn't leak an LMDB
+# reader slot or block subsequent write txns.
+_finalize_txn(t::Transaction) = abort(t)
 
 """Reset a read-only transaction
 
