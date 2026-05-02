@@ -198,15 +198,26 @@ function get(cur::Cursor, key, ::Type{T}, op::MDB_cursor_op=MDB_SET_KEY) where T
 end
 
 # Populate `key_ref` with `searchkey`'s data. Returns the heap-rooted argument
-# that must outlive the surrounding ccall (use `GC.@preserve`).
-@inline _setup_key!(key_ref, k::String)        = (key_ref[] = MDBValue(k); k)
-@inline _setup_key!(key_ref, k::AbstractArray) = (key_ref[] = MDBValue(k); k)
-@inline _setup_key!(key_ref, k::Base.RefValue) = (key_ref[] = MDBValue(k); k)
+# that the caller must keep alive across the surrounding ccall (use
+# `GC.@preserve`); the pointer baked into `key_ref` aliases its data.
+@inline function _setup_key!(key_ref, k::String)
+    key_ref[] = MDB_val(Csize_t(sizeof(k)),
+                         Ptr{Cvoid}(Base.unsafe_convert(Ptr{UInt8}, k)))
+    return k
+end
+@inline function _setup_key!(key_ref, k::AbstractArray{T}) where {T}
+    key_ref[] = MDB_val(Csize_t(sizeof(T) * length(k)),
+                         Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, k)))
+    return k
+end
+@inline function _setup_key!(key_ref, k::Base.RefValue{T}) where {T}
+    key_ref[] = MDB_val(Csize_t(sizeof(T)),
+                         Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, k)))
+    return k
+end
 @inline function _setup_key!(key_ref, k::T) where T
     isbitstype(T) || throw(MethodError(_setup_key!, (key_ref, k)))
-    box = Ref(k)
-    key_ref[] = MDBValue(box)
-    return box
+    return _setup_key!(key_ref, Ref(k))
 end
 
 # Position the cursor with `op`. Returns `true` on success, `false` on
@@ -444,13 +455,13 @@ end
 
 This function stores key/data pairs into the database. The cursor is positioned at the new item, or on failure usually near it.
 """
-function put!(cur::Cursor, key, val; flags::Cuint = zero(Cuint))
-    mdb_cursor_put(cur, key, val, flags)
+function put!(cur::Cursor, key, val; flags::Integer = zero(Cuint))
+    mdb_cursor_put(cur, key, val, Cuint(flags))
 end
 
 "Delete current key/data pair to which the cursor refers"
-function delete!(cur::Cursor; flags::Cuint = zero(Cuint))
-    mdb_cursor_del(cur, flags)
+function delete!(cur::Cursor; flags::Integer = zero(Cuint))
+    mdb_cursor_del(cur, Cuint(flags))
 end
 
 "Return count of duplicates for current key"

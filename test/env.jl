@@ -64,6 +64,25 @@ module LMDB_Env
         rm(dbname, recursive=true)
     end
 
+    # High-level Environment(path; ...) constructor.
+    mktempdir() do dir
+        big = Csize_t(8) * 1024^3
+        env = Environment(dir; mapsize = big, maxreaders = 42, maxdbs = 4,
+                          flags = MDB_NOSYNC | MDB_NOTLS)
+        try
+            @test isopen(env)
+            @test env[:Readers] == 42
+            @test info(env).me_mapsize == big
+            @test isflagset(env[:Flags], Cuint(MDB_NOSYNC))
+            @test isflagset(env[:Flags], Cuint(MDB_NOTLS))
+        finally
+            close(env)
+        end
+
+        # On failure during open, the Environment ctor closes the partial env.
+        @test_throws LMDBError Environment(joinpath(dir, "definitely_does_not_exist"))
+    end
+
     # reader_check / reader_list / copy
     mktempdir() do dir
         environment(dir) do env

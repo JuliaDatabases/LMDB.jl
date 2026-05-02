@@ -8,7 +8,7 @@ module LMDB_DupSort
     mktempdir() do dir
         environment(dir) do env
             start(env) do txn
-                open(txn, flags = Cuint(LMDB.MDB_DUPSORT)) do dbi
+                open(txn, flags = MDB_DUPSORT) do dbi
                     LMDB.put!(txn, dbi, "k1", "a")
                     LMDB.put!(txn, dbi, "k1", "b")
                     LMDB.put!(txn, dbi, "k1", "c")

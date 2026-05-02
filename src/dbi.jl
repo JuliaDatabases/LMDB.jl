@@ -12,16 +12,16 @@ Base.cconvert(::Type{MDB_dbi}, d::DBI) = d.handle
 isopen(dbi::DBI) = dbi.handle != zero(Cuint)
 
 "Open a database in the environment"
-function open(txn::Transaction, dbname::String = ""; flags::Cuint = zero(Cuint))
+function open(txn::Transaction, dbname::String = ""; flags::Integer = zero(Cuint))
     cdbname = length(dbname) > 0 ? dbname : Ptr{Cchar}(C_NULL)
     handle = Ref{MDB_dbi}()
-    mdb_dbi_open(txn, cdbname, flags, handle)
+    mdb_dbi_open(txn, cdbname, Cuint(flags), handle)
     return DBI(handle[], dbname)
 end
 
 "Wrapper of DBI `open` for `do` construct"
-function open(f::Function, txn::Transaction, dbname::String = ""; flags::Cuint = zero(Cuint))
-    dbi = open(txn, dbname, flags=flags)
+function open(f::Function, txn::Transaction, dbname::String = ""; flags::Integer = zero(Cuint))
+    dbi = open(txn, dbname, flags=Cuint(flags))
     tenv = env(txn)
     try
         f(dbi)
@@ -62,8 +62,8 @@ function drop(txn::Transaction, dbi::DBI; delete = false)
 end
 
 "Store items into a database"
-function put!(txn::Transaction, dbi::DBI, key, val; flags::Cuint = zero(Cuint))
-    mdb_put(txn, dbi, key, val, flags)
+function put!(txn::Transaction, dbi::DBI, key, val; flags::Integer = zero(Cuint))
+    mdb_put(txn, dbi, key, val, Cuint(flags))
 end
 
 "Delete items from a database"

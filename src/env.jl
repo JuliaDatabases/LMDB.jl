@@ -50,20 +50,51 @@ end
 
 *Note:* A database directory must exist and be writable.
 """
-function open(env::Environment, path::String; flags::Cuint=zero(Cuint), mode::mode_t = mode_t(0o755))
+function open(env::Environment, path::String; flags::Integer=zero(Cuint),
+              mode::Integer = mode_t(0o755))
     env.path = path
-    mdb_env_open(env, path, flags, mode)
+    mdb_env_open(env, path, Cuint(flags), mode_t(mode))
 end
 
 "Wrapper of `open` for `do` construct"
-function environment(f::Function, path::String; flags::Cuint=zero(Cuint), mode::mode_t = mode_t(0o755))
+function environment(f::Function, path::String; flags::Integer=zero(Cuint),
+                     mode::Integer = mode_t(0o755))
     env = create()
     try
-        open(env, path)
+        open(env, path; flags = Cuint(flags), mode = mode_t(mode))
         f(env)
     finally
         close(env)
     end
+end
+
+"""
+    Environment(path::AbstractString; mapsize=nothing, maxreaders=nothing,
+                maxdbs=nothing, flags=0, mode=0o755) -> Environment
+
+One-call equivalent of `create()` + (optional) `setindex!` for `MapSize` /
+`Readers` / `DBs` + `open(env, path)`. Mirrors py-lmdb's
+`Environment(path, **kwargs)` and lmdb-rs's `EnvironmentBuilder.open(path)`.
+
+If anything fails between `create` and a successful `open`, the partially
+constructed environment is closed before rethrowing.
+"""
+function Environment(path::AbstractString; mapsize::Union{Integer,Nothing} = nothing,
+                     maxreaders::Union{Integer,Nothing} = nothing,
+                     maxdbs::Union{Integer,Nothing} = nothing,
+                     flags::Integer = zero(Cuint),
+                     mode::Integer = mode_t(0o755))
+    env = create()
+    try
+        mapsize    === nothing || (env[:MapSize] = mapsize)
+        maxreaders === nothing || (env[:Readers] = maxreaders)
+        maxdbs     === nothing || (env[:DBs]     = maxdbs)
+        open(env, String(path); flags = Cuint(flags), mode = mode_t(mode))
+    catch
+        close(env)
+        rethrow()
+    end
+    return env
 end
 
 """Close the environment and release the memory map.
@@ -88,18 +119,16 @@ function sync(env::Environment, force::Bool = false)
 end
 
 """Set environment flags"""
-function set!(env::Environment, flag::Cuint)
-    mdb_env_set_flags(env, flag, one(Cint))
+function set!(env::Environment, flag::Integer)
+    mdb_env_set_flags(env, Cuint(flag), one(Cint))
     return flag
 end
-set!(env::Environment, flag::EnvironmentFlags) = set!(env, Cuint(flag))
 
 """Unset environment flags"""
-function unset!(env::Environment, flag::Cuint)
-    mdb_env_set_flags(env, flag, zero(Cint))
+function unset!(env::Environment, flag::Integer)
+    mdb_env_set_flags(env, Cuint(flag), zero(Cint))
     return flag
 end
-unset!(env::Environment, flag::EnvironmentFlags) = unset!(env, Cuint(flag))
 
 
 """Set environment flags and parameters
