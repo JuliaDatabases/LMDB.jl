@@ -197,6 +197,172 @@ function get(cur::Cursor, key, ::Type{T}, op::MDB_cursor_op=MDB_SET_KEY) where T
     return mbd_unpack(T, val_ref)
 end
 
+# Populate `key_ref` with `searchkey`'s data. Returns the heap-rooted argument
+# that must outlive the surrounding ccall (use `GC.@preserve`).
+@inline _setup_key!(key_ref, k::String)        = (key_ref[] = MDBValue(k); k)
+@inline _setup_key!(key_ref, k::AbstractArray) = (key_ref[] = MDBValue(k); k)
+@inline _setup_key!(key_ref, k::Base.RefValue) = (key_ref[] = MDBValue(k); k)
+@inline function _setup_key!(key_ref, k::T) where T
+    isbitstype(T) || throw(MethodError(_setup_key!, (key_ref, k)))
+    box = Ref(k)
+    key_ref[] = MDBValue(box)
+    return box
+end
+
+# Position the cursor with `op`. Returns `true` on success, `false` on
+# `MDB_NOTFOUND`. Throws on other errors.
+@inline function _cursor_seek!(cur::Cursor, key_ref::Ref{MDB_val},
+                               val_ref::Ref{MDB_val}, op::MDB_cursor_op,
+                               searchkey)
+    if searchkey === nothing
+        ret = unchecked_mdb_cursor_get(cur, key_ref, val_ref, op)
+    else
+        held = _setup_key!(key_ref, searchkey)
+        ret = GC.@preserve held unchecked_mdb_cursor_get(cur, key_ref, val_ref, op)
+    end
+    ret == MDB_NOTFOUND && return false
+    iszero(ret) || throw(LMDBError(ret))
+    return true
+end
+
+"""
+    seek!(cur::Cursor, ::Type{T}=Vector{UInt8}) -> Union{T,Nothing}
+
+Position the cursor at the first entry. Returns the key as `T`, or `nothing`
+if the database is empty. Wraps `MDB_FIRST`.
+"""
+function seek!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_FIRST, nothing) || return nothing
+    return mbd_unpack(T, key_ref)
+end
+
+"""
+    seek!(cur::Cursor, key, ::Type{T}=Vector{UInt8}) -> Union{T,Nothing}
+
+Position the cursor at the entry whose key exactly equals `key`. Returns the
+matched key as `T`, or `nothing` if no such entry exists. Wraps `MDB_SET_KEY`.
+"""
+function seek!(cur::Cursor, searchkey, ::Type{T}=Vector{UInt8}) where T
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_SET_KEY, searchkey) || return nothing
+    return mbd_unpack(T, key_ref)
+end
+
+"""
+    seek_last!(cur::Cursor, ::Type{T}=Vector{UInt8}) -> Union{T,Nothing}
+
+Position the cursor at the last entry. Returns the key as `T`, or `nothing`
+if the database is empty. Wraps `MDB_LAST`.
+"""
+function seek_last!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_LAST, nothing) || return nothing
+    return mbd_unpack(T, key_ref)
+end
+
+"""
+    seek_range!(cur::Cursor, key, ::Type{T}=Vector{UInt8}) -> Union{T,Nothing}
+
+Position the cursor at the smallest key `>= key`. Returns the matched key as
+`T`, or `nothing` if no such entry exists. Wraps `MDB_SET_RANGE`.
+"""
+function seek_range!(cur::Cursor, searchkey, ::Type{T}=Vector{UInt8}) where T
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_SET_RANGE, searchkey) || return nothing
+    return mbd_unpack(T, key_ref)
+end
+
+"""
+    next!(cur::Cursor, ::Type{T}=Vector{UInt8}) -> Union{T,Nothing}
+
+Advance the cursor by one entry. Returns the new key as `T`, or `nothing` if
+the cursor moved past the last entry. Wraps `MDB_NEXT`.
+"""
+function next!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_NEXT, nothing) || return nothing
+    return mbd_unpack(T, key_ref)
+end
+
+"""
+    prev!(cur::Cursor, ::Type{T}=Vector{UInt8}) -> Union{T,Nothing}
+
+Move the cursor back by one entry. Returns the new key as `T`, or `nothing`
+if the cursor moved past the first entry. Wraps `MDB_PREV`.
+"""
+function prev!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_PREV, nothing) || return nothing
+    return mbd_unpack(T, key_ref)
+end
+
+"""
+    key(cur::Cursor, ::Type{K}=Vector{UInt8}) -> K
+
+Return the key at the cursor's current position, decoded as `K`. Wraps
+`MDB_GET_CURRENT`. Throws if the cursor is not positioned.
+"""
+function key(cur::Cursor, ::Type{K}=Vector{UInt8}) where K
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    mdb_cursor_get(cur, key_ref, val_ref, MDB_GET_CURRENT)
+    return mbd_unpack(K, key_ref)
+end
+
+"""
+    value(cur::Cursor, ::Type{V}=Vector{UInt8}) -> V
+
+Return the value at the cursor's current position, decoded as `V`. Wraps
+`MDB_GET_CURRENT`. Throws if the cursor is not positioned.
+"""
+function value(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    mdb_cursor_get(cur, key_ref, val_ref, MDB_GET_CURRENT)
+    return mbd_unpack(V, val_ref)
+end
+
+"""
+    item(cur::Cursor, ::Type{K}=Vector{UInt8}, ::Type{V}=Vector{UInt8}) -> Pair{K,V}
+
+Return the (key => value) pair at the cursor's current position. Wraps
+`MDB_GET_CURRENT`.
+"""
+function item(cur::Cursor, ::Type{K}=Vector{UInt8}, ::Type{V}=Vector{UInt8}) where {K,V}
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    mdb_cursor_get(cur, key_ref, val_ref, MDB_GET_CURRENT)
+    return mbd_unpack(K, key_ref) => mbd_unpack(V, val_ref)
+end
+
+"""
+    walk(f, cur::Cursor; from = nothing)
+
+Walk every entry the cursor visits, calling
+`f(key_ref::Ref{MDB_val}, val_ref::Ref{MDB_val})` once per entry. Iteration
+starts at the first key (`MDB_FIRST`) when `from === nothing`, otherwise at
+the smallest key `>= from` (`MDB_SET_RANGE`).
+
+Inside `f`, `key_ref[]` and `val_ref[]` point into LMDB-owned memory and are
+valid only for the duration of the surrounding transaction; copy out anything
+you want to retain.
+"""
+function walk(f, cur::Cursor; from = nothing)
+    key_ref = Ref(MDBValue())
+    val_ref = Ref(MDBValue())
+    if from === nothing
+        ret = unchecked_mdb_cursor_get(cur, key_ref, val_ref, MDB_FIRST)
+    else
+        held = _setup_key!(key_ref, from)
+        ret = GC.@preserve held unchecked_mdb_cursor_get(cur, key_ref, val_ref,
+                                                          MDB_SET_RANGE)
+    end
+    while iszero(ret)
+        f(key_ref, val_ref)
+        ret = unchecked_mdb_cursor_get(cur, key_ref, val_ref, MDB_NEXT)
+    end
+    ret == MDB_NOTFOUND && return
+    throw(LMDBError(ret))
+end
+
 """Store by cursor.
 
 This function stores key/data pairs into the database. The cursor is positioned at the new item, or on failure usually near it.
