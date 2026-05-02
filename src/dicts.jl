@@ -1,10 +1,20 @@
-mutable struct LMDBDict{K,V}
+"""
+    LMDBDict{K,V}(path; readonly, rdahead, mapsize, readers, dbs)
+
+A persistent `AbstractDict{K,V}` backed by a single LMDB environment +
+default DBI. The keys and values are encoded as raw bytes — `String`,
+`Vector{T}` (where `T` is bitstype), or any bitstype scalar.
+
+For prefix-scoped scans (e.g. hierarchical "directory" key schemes),
+see `LMDB.scan` / `LMDB.scan_keys` / `LMDB.scan_values` / `LMDB.list_dirs`.
+"""
+mutable struct LMDBDict{K,V} <: AbstractDict{K,V}
     env::LMDB.Environment
     dbi::LMDB.DBI
     function LMDBDict{K,V}(env::LMDB.Environment, dbi::LMDB.DBI) where {K,V}
         x = new{K,V}(env, dbi)
         finalizer(x) do d
-            LMDB.close(d.env,d.dbi)
+            LMDB.close(d.env, d.dbi)
             LMDB.close(d.env)
         end
         x
@@ -14,32 +24,33 @@ function LMDBDict{K,V}(path::String; readonly = false, rdahead = false,
                        mapsize::Union{Integer,Nothing} = nothing,
                        readers::Union{Integer,Nothing} = nothing,
                        dbs::Union{Integer,Nothing} = nothing) where {K,V}
-    flags = readonly ? MDB_RDONLY : zero(Cuint)
-    if !rdahead
-        flags = flags | MDB_NORDAHEAD
-    end
-    env = LMDB.create()
-    mapsize  === nothing || (env[:MapSize] = mapsize)
-    readers  === nothing || (env[:Readers] = readers)
-    dbs      === nothing || (env[:DBs]     = dbs)
-    open(env, path)
-    #A transaction just for getting a DBI handle
-    dbi = LMDB.start(env,flags=flags) do txn
+    # MDB_NOTLS: drop LMDB's default thread-local reader slots, so a single
+    # thread can hold multiple concurrent read txns. Required for any
+    # interleaved read (e.g. `length(d)` mid-iteration) and for read txns
+    # in a multi-task setting. Same default as py-lmdb.
+    envflags = Cuint(MDB_NOTLS)
+    rdahead || (envflags |= Cuint(MDB_NORDAHEAD))
+    readonly && (envflags |= Cuint(MDB_RDONLY))
+    env = LMDB.Environment(path; mapsize, maxreaders = readers, maxdbs = dbs,
+                           flags = envflags)
+    dbi = LMDB.start(env) do txn
         LMDB.open(txn)
     end
     LMDBDict{K,V}(env, dbi)
 end
 LMDBDict(path::String; kwargs...) = LMDBDict{String, Vector{UInt8}}(path; kwargs...)
-Base.keytype(::LMDBDict{K}) where K = K
-Base.eltype(::LMDBDict{<:Any,V}) where V = V
+
 function Base.close(d::LMDBDict)
-    LMDB.close(d.env,d.dbi)
+    LMDB.close(d.env, d.dbi)
     LMDB.close(d.env)
 end
+
+# --- internal helpers ---
+
 function cursor_do(f, d; readonly = false)
     txnflags = readonly ? Cuint(LMDB.MDB_RDONLY) : Cuint(0)
     LMDB.start(d.env, flags = txnflags) do txn
-        LMDB.open(txn,d.dbi) do cur
+        LMDB.open(txn, d.dbi) do cur
             f(cur)
         end
     end
@@ -52,7 +63,6 @@ function txn_dbi_do(f, d; readonly = false)
     end
 end
 
-# Does `kv`'s data start with `prefix`?
 @inline function _has_prefix(kv::LMDB.MDB_val, prefix::Vector{UInt8})
     kv.mv_size < length(prefix) && return false
     p = Ptr{UInt8}(kv.mv_data)
@@ -62,8 +72,6 @@ end
     return true
 end
 
-# Walk every entry under `prefix` (or every entry if `prefix` is empty),
-# stopping at the first key that no longer matches.
 function _walk_prefix(f, cur, prefix::Vector{UInt8})
     if isempty(prefix)
         LMDB.walk(f, cur)
@@ -76,6 +84,195 @@ function _walk_prefix(f, cur, prefix::Vector{UInt8})
     end
 end
 
+# --- AbstractDict interface ---
+
+# Iteration: state is `(txn, cur)` opened on the first iterate (LLVM-style;
+# the cursor's internal position is the moral equivalent of LLVM's
+# `LLVMGetNextInstruction` next-pointer). On normal completion the txn is
+# committed and the cursor closed; on early break/throw, Cursor's and
+# Transaction's finalizers reclaim them.
+function Base.iterate(d::LMDBDict)
+    txn = LMDB.start(d.env; flags = Cuint(MDB_RDONLY))
+    cur = LMDB.open(txn, d.dbi)
+    return _iter_step(d, txn, cur, MDB_FIRST)
+end
+Base.iterate(d::LMDBDict, (txn, cur)::Tuple{Transaction,Cursor}) =
+    _iter_step(d, txn, cur, MDB_NEXT)
+
+function _iter_step(::LMDBDict{K,V}, txn::Transaction, cur::Cursor,
+                    op::MDB_cursor_op) where {K,V}
+    k_ref = Ref(MDBValue())
+    v_ref = Ref(MDBValue())
+    ret = LMDB.unchecked_mdb_cursor_get(cur, k_ref, v_ref, op)
+    if ret == MDB_NOTFOUND
+        LMDB.close(cur)
+        LMDB.commit(txn)
+        return nothing
+    elseif !iszero(ret)
+        LMDB.close(cur)
+        LMDB.abort(txn)
+        throw(LMDBError(ret))
+    end
+    return (LMDB.mdb_unpack(K, k_ref) => LMDB.mdb_unpack(V, v_ref), (txn, cur))
+end
+
+Base.IteratorSize(::Type{<:LMDBDict}) = Base.HasLength()
+
+function Base.length(d::LMDBDict)
+    txn_dbi_do(d, readonly = true) do txn, dbi
+        Int(LMDB.stat(txn, dbi).entries)
+    end
+end
+
+Base.isempty(d::LMDBDict) = iszero(length(d))
+
+function Base.getindex(d::LMDBDict{K,V}, k) where {K,V}
+    txn_dbi_do(d, readonly = true) do txn, dbi
+        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v === nothing ? throw(KeyError(k)) : v
+    end
+end
+
+function Base.haskey(d::LMDBDict{K,V}, k) where {K,V}
+    txn_dbi_do(d, readonly = true) do txn, dbi
+        LMDB.tryget(txn, dbi, convert(K, k), V) !== nothing
+    end
+end
+
+function Base.get(d::LMDBDict{K,V}, k, default) where {K,V}
+    txn_dbi_do(d, readonly = true) do txn, dbi
+        LMDB.get(txn, dbi, convert(K, k), V, default)
+    end
+end
+
+function Base.get(f::Base.Callable, d::LMDBDict{K,V}, k) where {K,V}
+    txn_dbi_do(d, readonly = true) do txn, dbi
+        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v === nothing ? f() : v
+    end
+end
+
+function Base.get!(d::LMDBDict{K,V}, k, default) where {K,V}
+    txn_dbi_do(d) do txn, dbi
+        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v !== nothing && return v
+        LMDB.put!(txn, dbi, convert(K, k), convert(V, default))
+        return default
+    end
+end
+
+function Base.get!(f::Base.Callable, d::LMDBDict{K,V}, k) where {K,V}
+    txn_dbi_do(d) do txn, dbi
+        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v !== nothing && return v
+        default = f()
+        LMDB.put!(txn, dbi, convert(K, k), convert(V, default))
+        return default
+    end
+end
+
+function Base.setindex!(d::LMDBDict{K,V}, v, k) where {K,V}
+    txn_dbi_do(d) do txn, dbi
+        LMDB.put!(txn, dbi, convert(K, k), convert(V, v))
+    end
+    return d
+end
+
+function Base.delete!(d::LMDBDict{K}, k) where K
+    txn_dbi_do(d) do txn, dbi
+        try
+            LMDB.delete!(txn, dbi, convert(K, k))
+        catch e
+            e isa LMDBError && LMDB.is_notfound(e) || rethrow()
+        end
+    end
+    return d
+end
+
+function Base.pop!(d::LMDBDict{K,V}, k) where {K,V}
+    txn_dbi_do(d) do txn, dbi
+        v = LMDB.pop!(txn, dbi, convert(K, k), V)
+        v === nothing ? throw(KeyError(k)) : v
+    end
+end
+
+function Base.pop!(d::LMDBDict{K,V}, k, default) where {K,V}
+    txn_dbi_do(d) do txn, dbi
+        v = LMDB.pop!(txn, dbi, convert(K, k), V)
+        v === nothing ? default : v
+    end
+end
+
+function Base.empty!(d::LMDBDict)
+    txn_dbi_do(d) do txn, dbi
+        LMDB.drop(txn, dbi; delete = false)
+    end
+    return d
+end
+
+# AbstractDict's default implementations of `keys`, `values`, `pairs`,
+# `merge!`, `filter!`, `==`, `hash`, `in(::Pair, d)` etc. all kick in for
+# free now that `iterate` and `length` are defined.
+
+# --- prefix-scan helpers (LMDB-namespaced; not Base extensions) ---
+
+"""
+    scan(d::LMDBDict; prefix=UInt8[]) -> Vector{Pair{K,V}}
+
+Eagerly collect every `key => value` pair whose key starts with `prefix`
+(byte-prefix; pass a `String` or `Vector{UInt8}`). Pass an empty prefix
+to scan the whole dict.
+"""
+function scan(d::LMDBDict{K,V}; prefix = UInt8[]) where {K,V}
+    bprefix = Vector{UInt8}(prefix)
+    out = Pair{K,V}[]
+    cursor_do(d, readonly = true) do cur
+        _walk_prefix(cur, bprefix) do k_ref, v_ref
+            push!(out, mdb_unpack(K, k_ref) => mdb_unpack(V, v_ref))
+        end
+    end
+    return out
+end
+
+"""
+    scan_keys(d::LMDBDict; prefix=UInt8[]) -> Vector{K}
+
+Eagerly collect every key whose key starts with `prefix`.
+"""
+function scan_keys(d::LMDBDict{K}; prefix = UInt8[]) where K
+    bprefix = Vector{UInt8}(prefix)
+    out = K[]
+    cursor_do(d, readonly = true) do cur
+        _walk_prefix(cur, bprefix) do k_ref, _
+            push!(out, mdb_unpack(K, k_ref))
+        end
+    end
+    return out
+end
+
+"""
+    scan_values(d::LMDBDict; prefix=UInt8[]) -> Vector{V}
+
+Eagerly collect every value whose key starts with `prefix`.
+"""
+function scan_values(d::LMDBDict{K,V}; prefix = UInt8[]) where {K,V}
+    bprefix = Vector{UInt8}(prefix)
+    out = V[]
+    cursor_do(d, readonly = true) do cur
+        _walk_prefix(cur, bprefix) do _, v_ref
+            push!(out, mdb_unpack(V, v_ref))
+        end
+    end
+    return out
+end
+
+"""
+    list_dirs(d::LMDBDict{String}; prefix="", sep='/') -> Vector{String}
+
+For dicts that use a hierarchical String key scheme (e.g. `"a/b/c"`),
+return the immediate children of `prefix`. A child is either a leaf
+key (no `sep` after `prefix`) or a directory marker (`prefix*name*sep`).
+"""
 function list_dirs(d::LMDBDict{String}; prefix = "", sep = '/')
     bprefix = Vector{UInt8}(prefix)
     sepb = UInt8(sep)
@@ -101,39 +298,11 @@ function list_dirs(d::LMDBDict{String}; prefix = "", sep = '/')
     return out
 end
 
-function Base.keys(d::LMDBDict{K}; prefix=UInt8[]) where K
-    bprefix = Vector{UInt8}(prefix)
-    out = K[]
-    cursor_do(d, readonly = true) do cur
-        _walk_prefix(cur, bprefix) do k_ref, _
-            push!(out, LMDB.mdb_unpack(K, k_ref))
-        end
-    end
-    return out
-end
+"""
+    valuesize(d::LMDBDict; prefix=UInt8[]) -> Int
 
-function Base.values(d::LMDBDict{K,V}; prefix=UInt8[]) where {K,V}
-    bprefix = Vector{UInt8}(prefix)
-    out = V[]
-    cursor_do(d, readonly = true) do cur
-        _walk_prefix(cur, bprefix) do _, v_ref
-            push!(out, LMDB.mdb_unpack(V, v_ref))
-        end
-    end
-    return out
-end
-
-function Base.collect(d::LMDBDict{K,V}; prefix=UInt8[]) where {K,V}
-    bprefix = Vector{UInt8}(prefix)
-    out = Pair{K,V}[]
-    cursor_do(d, readonly = true) do cur
-        _walk_prefix(cur, bprefix) do k_ref, v_ref
-            push!(out, LMDB.mdb_unpack(K, k_ref) => LMDB.mdb_unpack(V, v_ref))
-        end
-    end
-    return out
-end
-
+Sum of the byte sizes of all values whose key starts with `prefix`.
+"""
 function valuesize(d::LMDBDict; prefix = UInt8[])
     bprefix = Vector{UInt8}(prefix)
     total = 0
@@ -143,62 +312,4 @@ function valuesize(d::LMDBDict; prefix = UInt8[])
         end
     end
     return total
-end
-
-function Base.getindex(d::LMDBDict{K,V}, k) where {K,V}
-    txn_dbi_do(d, readonly = true) do txn, dbi
-        LMDB.get(txn, dbi, convert(K, k), V)
-    end
-end
-
-function Base.haskey(d::LMDBDict{K,V}, key) where {K,V}
-    txn_dbi_do(d, readonly = true) do txn, dbi
-        LMDB.tryget(txn, dbi, convert(K, key), V) !== nothing
-    end
-end
-
-function Base.get(d::LMDBDict{K,V}, key, default) where {K,V}
-    txn_dbi_do(d, readonly = true) do txn, dbi
-        LMDB.get(txn, dbi, convert(K, key), V, default)
-    end
-end
-
-function Base.get!(d::LMDBDict{K,V}, key, default) where {K,V}
-    txn_dbi_do(d) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, key), V)
-        v !== nothing && return v
-        LMDB.put!(txn, dbi, convert(K, key), convert(V, default))
-        return default
-    end
-end
-
-function Base.get(f::F, d::LMDBDict{K,V}, key) where {K,V,F<:Union{Function, Type}}
-    txn_dbi_do(d, readonly = true) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, key), V)
-        v === nothing ? f() : v
-    end
-end
-
-function Base.get!(f::F, d::LMDBDict{K,V}, key) where {K,V,F<:Union{Function, Type}}
-    txn_dbi_do(d) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, key), V)
-        v !== nothing && return v
-        default = f()
-        LMDB.put!(txn, dbi, convert(K, key), convert(V, default))
-        return default
-    end
-end
-
-function Base.setindex!(d::LMDBDict{K,V},v,k) where {K,V}
-    txn_dbi_do(d) do txn, dbi
-        LMDB.put!(txn,dbi,convert(K,k),convert(V,v))
-    end
-    v
-end
-
-function Base.delete!(d::LMDBDict{K},k) where K
-    txn_dbi_do(d) do txn, dbi
-        LMDB.delete!(txn, dbi, convert(K,k))
-    end
-    d
 end
