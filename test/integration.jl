@@ -50,16 +50,16 @@ module LMDB_Integration
                 @test LMDB.tryget(txn, dbi, "ghost", String) === nothing
             end
 
-            # Batch delete with NOTFOUND tolerance.
+            # Batch delete: present keys return true, missing return false,
+            # no exception on either path. cuTile's `_delete_batch!` uses
+            # the Bool to count actual evictions.
+            deleted = 0
             start(env) do txn
                 for k in ["key1", "ghost", "key3"]
-                    try
-                        LMDB.delete!(txn, dbi, k)
-                    catch e
-                        e isa LMDBError && LMDB.is_notfound(e) || rethrow()
-                    end
+                    LMDB.delete!(txn, dbi, k) && (deleted += 1)
                 end
             end
+            @test deleted == 2
             start(env; flags = MDB_RDONLY) do txn
                 @test LMDB.tryget(txn, dbi, "key1", String) === nothing
                 @test LMDB.tryget(txn, dbi, "key2", String) == "value2"

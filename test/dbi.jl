@@ -86,6 +86,30 @@ module LMDB_DBI
         end
     end
 
+    # delete!: Bool-returning, idempotent on MDB_NOTFOUND.
+    mktempdir() do dir
+        environment(dir) do env
+            start(env) do txn
+                open(txn) do dbi
+                    LMDB.put!(txn, dbi, "k1", "v1")
+                    LMDB.put!(txn, dbi, "k2", "v2")
+
+                    # Present key → true, returns and entry is gone.
+                    @test LMDB.delete!(txn, dbi, "k1") === true
+                    @test LMDB.tryget(txn, dbi, "k1", String) === nothing
+
+                    # Missing key → false, no exception.
+                    @test LMDB.delete!(txn, dbi, "ghost") === false
+                    @test LMDB.delete!(txn, dbi, "k1") === false  # already gone
+
+                    # Idempotent: a second delete on the same key is a no-op.
+                    @test LMDB.delete!(txn, dbi, "k2") === true
+                    @test LMDB.delete!(txn, dbi, "k2") === false
+                end
+            end
+        end
+    end
+
     # replace! / pop!
     mktempdir() do dir
         environment(dir) do env

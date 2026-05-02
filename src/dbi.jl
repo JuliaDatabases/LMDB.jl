@@ -66,10 +66,23 @@ function put!(txn::Transaction, dbi::DBI, key, val; flags::Integer = zero(Cuint)
     mdb_put(txn, dbi, key, val, Cuint(flags))
 end
 
-"Delete items from a database"
+"""
+    delete!(txn::Transaction, dbi::DBI, key) -> Bool
+    delete!(txn::Transaction, dbi::DBI, key, val) -> Bool
+
+Delete `key` (or, in `MDB_DUPSORT`, the specific `(key, val)` pair) from
+the database. Returns `true` if an entry was removed, `false` if the
+key was not present. Other LMDB errors propagate as `LMDBError`.
+
+The Bool-return / no-throw-on-miss shape matches `Base.delete!`'s "if
+any" contract and the dominant LMDB-binding convention (heed, py-lmdb,
+lmdb-js, lmdbxx)."""
 function delete!(txn::Transaction, dbi::DBI, key, val=C_NULL)
     val_arg = val === C_NULL ? MDBValue() : val
-    mdb_del(txn, dbi, key, val_arg)
+    ret = unchecked_mdb_del(txn, dbi, key, val_arg)
+    ret == MDB_NOTFOUND && return false
+    iszero(ret) || throw(LMDBError(ret))
+    return true
 end
 
 """Return statistics for the database referenced by `dbi` within `txn`
