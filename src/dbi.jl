@@ -85,12 +85,26 @@ function delete!(txn::Transaction, dbi::DBI, key, val=C_NULL)
     return true
 end
 
-"""Return statistics for the database referenced by `dbi` within `txn`
-(page size, B-tree depth, page counts, total entries)."""
+"""
+    stat(txn::Transaction, dbi::DBI) -> NamedTuple
+
+Return statistics for the database referenced by `dbi` within `txn`:
+
+| field            | meaning                                       |
+|------------------|-----------------------------------------------|
+| `psize`          | LMDB page size in bytes                       |
+| `depth`          | B-tree depth                                  |
+| `branch_pages`   | number of internal (non-leaf) pages           |
+| `leaf_pages`     | number of leaf pages                          |
+| `overflow_pages` | number of overflow pages (large values)       |
+| `entries`        | total number of `(key, value)` data items     |
+
+Live byte usage = `(branch_pages + leaf_pages + overflow_pages) * psize`.
+"""
 function stat(txn::Transaction, dbi::DBI)
     s_ref = Ref{MDB_stat}()
     mdb_stat(txn, dbi, s_ref)
-    return s_ref[]
+    return _stat_namedtuple(s_ref[])
 end
 
 """Get an item from a database. Throws `LMDBError` if `key` is not present."""

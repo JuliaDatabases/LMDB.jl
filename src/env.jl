@@ -185,20 +185,47 @@ function getindex(env::Environment, option::Symbol)
     return value[]
 end
 
-"""Return information about the LMDB environment."""
+"""
+    info(env::Environment) -> NamedTuple
+
+Return a `NamedTuple` describing the env's mmap and reader slots:
+
+| field        | meaning                                      |
+|--------------|----------------------------------------------|
+| `mapaddr`    | address the mmap is fixed at, or `C_NULL`    |
+| `mapsize`    | configured map size in bytes                 |
+| `last_pgno`  | high-water-mark page number (monotonic)      |
+| `last_txnid` | id of the most recent committed txn          |
+| `maxreaders` | max concurrent reader slots                  |
+| `numreaders` | live reader slots in use                     |
+
+Returns a zero-filled NamedTuple if the env is already closed.
+"""
 function info(env::Environment)
     ei_ref = Ref{MDB_envinfo}()
-    !isopen(env) && return MDB_envinfo(C_NULL, 0, 0, 0, 0, 0)
+    if !isopen(env)
+        return (mapaddr = C_NULL, mapsize = 0, last_pgno = 0, last_txnid = 0,
+                maxreaders = 0, numreaders = 0)
+    end
     mdb_env_info(env, ei_ref)
-    return ei_ref[]
+    ei = ei_ref[]
+    return (mapaddr   = ei.me_mapaddr,
+            mapsize   = Int(ei.me_mapsize),
+            last_pgno = Int(ei.me_last_pgno),
+            last_txnid = Int(ei.me_last_txnid),
+            maxreaders = Int(ei.me_maxreaders),
+            numreaders = Int(ei.me_numreaders))
 end
 
-"""Return statistics about the LMDB environment's main database (page size,
-B-tree depth, page counts, total entries)."""
+"""
+    stat(env::Environment) -> NamedTuple
+
+Statistics for the env's main DB. See `stat(txn, dbi)` for the field layout.
+"""
 function stat(env::Environment)
     s_ref = Ref{MDB_stat}()
     mdb_env_stat(env, s_ref)
-    return s_ref[]
+    return _stat_namedtuple(s_ref[])
 end
 
 """
@@ -284,10 +311,10 @@ function show(io::IO, env::Environment)
     if !isempty(env.path)
         print(io,"\nDB path: $(path(env))")
         ei = info(env)
-        print(io,"\nSize of the data memory map: $(ei.me_mapsize)")
-        print(io,"\nID of the last used page: $(ei.me_last_pgno)")
-        print(io,"\nID of the last committed transaction: $(ei.me_last_txnid)")
-        print(io,"\nMax reader slots in the environment: $(ei.me_maxreaders)")
-        print(io,"\nMax reader slots used in the environment: $(ei.me_numreaders)")
+        print(io,"\nSize of the data memory map: $(ei.mapsize)")
+        print(io,"\nID of the last used page: $(ei.last_pgno)")
+        print(io,"\nID of the last committed transaction: $(ei.last_txnid)")
+        print(io,"\nMax reader slots in the environment: $(ei.maxreaders)")
+        print(io,"\nMax reader slots used in the environment: $(ei.numreaders)")
     end
 end

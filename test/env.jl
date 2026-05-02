@@ -46,9 +46,9 @@ module LMDB_Env
         # stat(env) returns the main DB's stats; before any puts, there are
         # no entries and a positive page size.
         s = stat(env)
-        @test s isa LMDB.MDB_stat
-        @test s.ms_psize > 0
-        @test s.ms_entries == 0
+        @test s isa NamedTuple
+        @test s.psize > 0
+        @test s.entries == 0
 
         # Close environment
         close(env)
@@ -72,7 +72,7 @@ module LMDB_Env
         try
             @test isopen(env)
             @test env[:Readers] == 42
-            @test info(env).me_mapsize == big
+            @test info(env).mapsize == big
             @test isflagset(env[:Flags], Cuint(MDB_NOSYNC))
             @test isflagset(env[:Flags], Cuint(MDB_NOTLS))
         finally

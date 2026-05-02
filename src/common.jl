@@ -134,3 +134,13 @@ end
 
 """ Check if binary flag is set in provided value"""
 isflagset(value, flag) = (value & flag) == flag
+
+# Convert a raw `MDB_stat` (C field names) into the documented NamedTuple
+# returned from `stat(env)` and `stat(txn, dbi)`.
+@inline _stat_namedtuple(s::MDB_stat) =
+    (psize          = Int(s.ms_psize),
+     depth          = Int(s.ms_depth),
+     branch_pages   = Int(s.ms_branch_pages),
+     leaf_pages     = Int(s.ms_leaf_pages),
+     overflow_pages = Int(s.ms_overflow_pages),
+     entries        = Int(s.ms_entries))

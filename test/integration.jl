@@ -41,8 +41,7 @@ module LMDB_Integration
         try
             dbi, psize = start(env) do txn
                 d = open(txn)
-                s = LMDB.stat(txn, d)
-                (d, Int(s.ms_psize))
+                (d, LMDB.stat(txn, d).psize)
             end
             @test psize > 0
 

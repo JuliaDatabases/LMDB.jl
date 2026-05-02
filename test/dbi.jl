@@ -78,9 +78,9 @@ module LMDB_DBI
                     @test get(txn, dbi, "missing", String, "fallback") == "fallback"
 
                     s = LMDB.stat(txn, dbi)
-                    @test s isa LMDB.MDB_stat
-                    @test s.ms_entries == 2
-                    @test s.ms_psize > 0
+                    @test s isa NamedTuple
+                    @test s.entries == 2
+                    @test s.psize > 0
                 end
             end
         end
