@@ -67,6 +67,34 @@ function put!(txn::Transaction, dbi::DBI, key, val; flags::Integer = zero(Cuint)
 end
 
 """
+    put_reserved!(f, txn::Transaction, dbi::DBI, key, size::Integer; flags=0)
+
+Allocate `size` bytes of value space at `key` directly in LMDB's
+mmap'd write buffer, then call `f(buf::Vector{UInt8})` so the caller
+fills it in place. Equivalent to `put!` with the `MDB_RESERVE` flag,
+without the intermediate `Vector{UInt8}` round-trip — useful when the
+value's bytes can be produced directly into a destination buffer
+(e.g. by `unsafe_store!` of a header followed by `copyto!` of a
+payload). Heed's `Database::put_reserved` plays the same role.
+
+`buf` is an `unsafe_wrap` over the LMDB-allocated page; it is *only
+valid inside `f`* (and only inside the enclosing write txn). The
+buffer's length is exactly `size`. Don't escape `buf` past `f`'s
+return; copy what you want to keep.
+
+Cannot be combined with `MDB_DUPSORT`/`MDB_DUPFIXED` databases (LMDB
+forbids `MDB_RESERVE` there).
+"""
+function put_reserved!(f, txn::Transaction, dbi::DBI, key, size::Integer;
+                       flags::Integer = zero(Cuint))
+    val_ref = Ref(MDB_val(Csize_t(size), C_NULL))
+    mdb_put(txn, dbi, key, val_ref, Cuint(flags) | Cuint(MDB_RESERVE))
+    v = val_ref[]
+    buf = unsafe_wrap(Array, Ptr{UInt8}(v.mv_data), Int(v.mv_size))
+    return f(buf)
+end
+
+"""
     delete!(txn::Transaction, dbi::DBI, key) -> Bool
     delete!(txn::Transaction, dbi::DBI, key, val) -> Bool
 

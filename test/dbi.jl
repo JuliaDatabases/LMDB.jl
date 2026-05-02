@@ -86,6 +86,41 @@ module LMDB_DBI
         end
     end
 
+    # put_reserved!: callback-style MDB_RESERVE write.
+    mktempdir() do dir
+        environment(dir) do env
+            start(env) do txn
+                open(txn) do dbi
+                    # Write a 16-byte value where bytes 0..7 are a UInt64
+                    # header and bytes 8..15 are payload. The buffer hands
+                    # back is the LMDB-allocated mmap page; we fill it
+                    # in place — no intermediate Vector.
+                    LMDB.put_reserved!(txn, dbi, "framed", 16) do buf
+                        @test buf isa Vector{UInt8}
+                        @test length(buf) == 16
+                        unsafe_store!(Ptr{UInt64}(pointer(buf)),
+                                      htol(UInt64(0xdeadbeef)))
+                        for i in 1:8
+                            buf[8 + i] = UInt8(i)
+                        end
+                    end
+                    raw = LMDB.tryget(txn, dbi, "framed", Vector{UInt8})
+                    @test length(raw) == 16
+                    @test ltoh(reinterpret(UInt64, raw[1:8])[1]) ==
+                          UInt64(0xdeadbeef)
+                    @test raw[9:16] == UInt8[1, 2, 3, 4, 5, 6, 7, 8]
+
+                    # Return value: whatever the callback returns.
+                    rv = LMDB.put_reserved!(txn, dbi, "rv", 4) do buf
+                        fill!(buf, 0xab)
+                        :sentinel
+                    end
+                    @test rv === :sentinel
+                end
+            end
+        end
+    end
+
     # delete!: Bool-returning, idempotent on MDB_NOTFOUND.
     mktempdir() do dir
         environment(dir) do env

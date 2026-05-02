@@ -6,7 +6,7 @@ import Base: open, close, getindex, setindex!, put!, pop!, replace!, reset, copy
 export Environment, create, open, close, sync, set!, unset!, getindex, setindex!, path, info, stat, show,
        reader_check, reader_list, copy,
        Transaction, start, abort, commit, reset, renew, environment,
-       DBI, drop, delete!, keys, get, put!, tryget, replace!, pop!,
+       DBI, drop, delete!, keys, get, put!, put_reserved!, tryget, replace!, pop!,
        Cursor, count, transaction, database,
        seek_first_dup!, seek_last_dup!,
        next_dup!, prev_dup!, next_nodup!, prev_nodup!,
