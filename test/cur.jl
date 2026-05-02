@@ -101,6 +101,22 @@ module LMDB_CUR
                             push!(ks3, LMDB.mbd_unpack(String, k_ref))
                         end
                         @test isempty(ks3)
+
+                        # typed walk: each ref decoded via mdb_unpack(K, ...)
+                        # / mdb_unpack(V, ...).
+                        kv = Pair{String, String}[]
+                        LMDB.walk(cur, String, String) do k, v
+                            push!(kv, k => v)
+                        end
+                        @test kv == ["a" => "1", "b" => "2", "c" => "3"]
+
+                        # typed walk respects the false-stops contract.
+                        seen = Pair{String, String}[]
+                        LMDB.walk(cur, String, String) do k, v
+                            push!(seen, k => v)
+                            k == "b" ? false : nothing
+                        end
+                        @test seen == ["a" => "1", "b" => "2"]
                     end
                 end
             end

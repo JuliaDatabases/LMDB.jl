@@ -451,6 +451,27 @@ function walk(f, cur::Cursor; from = nothing)
     throw(LMDBError(ret))
 end
 
+"""
+    walk(f, cur::Cursor, ::Type{K}, ::Type{V}=K; from = nothing)
+
+Typed overload of `walk` mirroring the `tryget(txn, dbi, key, T)` /
+`key(cur, T)` / `seek!(cur, key, T)` shape used elsewhere in tier-2.
+Decodes each key and value through `mdb_unpack(K, …)` /
+`mdb_unpack(V, …)` before passing them to `f(k::K, v::V)`. Same stop
+contract as the raw form: `f` returning `false` halts iteration.
+
+Define a custom `mdb_unpack(::Type{T}, ::Ref{MDB_val})` method on a
+marker type to control what gets decoded — e.g. a `(atime, size)`
+tuple from a framed value, or a zero-copy view. This is the iteration
+counterpart to `tryget(..., T)`.
+"""
+function walk(f, cur::Cursor, ::Type{K}, ::Type{V} = K;
+              from = nothing) where {K, V}
+    walk(cur; from) do k_ref, v_ref
+        f(mdb_unpack(K, k_ref), mdb_unpack(V, v_ref))
+    end
+end
+
 """Store by cursor.
 
 This function stores key/data pairs into the database. The cursor is positioned at the new item, or on failure usually near it.
