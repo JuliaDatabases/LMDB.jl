@@ -103,3 +103,31 @@ function get(txn::Transaction, dbi::DBI, key, ::Type{T}, default) where T
     v = tryget(txn, dbi, key, T)
     v === nothing ? default : v
 end
+
+"""
+    replace!(txn::Transaction, dbi::DBI, key, val, ::Type{V}=typeof(val))
+        -> Union{V,Nothing}
+
+Atomically write `val` at `key`, returning the previous value (decoded as
+`V`) or `nothing` if `key` was not present. Read and write share the same
+transaction.
+"""
+function replace!(txn::Transaction, dbi::DBI, key, val,
+                  ::Type{V}=typeof(val)) where V
+    old = tryget(txn, dbi, key, V)
+    put!(txn, dbi, key, val)
+    return old
+end
+
+"""
+    pop!(txn::Transaction, dbi::DBI, key, ::Type{T}) -> Union{T,Nothing}
+
+Atomically read and delete the value at `key`, returning it (decoded as
+`T`) or `nothing` if `key` was not present.
+"""
+function pop!(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
+    v = tryget(txn, dbi, key, T)
+    v === nothing && return nothing
+    delete!(txn, dbi, key)
+    return v
+end

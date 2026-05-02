@@ -334,6 +334,83 @@ function item(cur::Cursor, ::Type{K}=Vector{UInt8}, ::Type{V}=Vector{UInt8}) whe
 end
 
 """
+    seek_first_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) -> Union{V,Nothing}
+
+Position at the first duplicate of the cursor's current key. Returns the
+value as `V`, or `nothing` if the current entry has no duplicates. Wraps
+`MDB_FIRST_DUP`. Only meaningful in `MDB_DUPSORT` databases.
+"""
+function seek_first_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_FIRST_DUP, nothing) || return nothing
+    return mbd_unpack(V, val_ref)
+end
+
+"""
+    seek_last_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) -> Union{V,Nothing}
+
+Position at the last duplicate of the cursor's current key. Returns the
+value as `V`, or `nothing` if the current entry has no duplicates. Wraps
+`MDB_LAST_DUP`.
+"""
+function seek_last_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_LAST_DUP, nothing) || return nothing
+    return mbd_unpack(V, val_ref)
+end
+
+"""
+    next_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) -> Union{V,Nothing}
+
+Advance to the next duplicate of the current key. Returns the new value
+as `V`, or `nothing` if there are no more duplicates of this key. Wraps
+`MDB_NEXT_DUP`.
+"""
+function next_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_NEXT_DUP, nothing) || return nothing
+    return mbd_unpack(V, val_ref)
+end
+
+"""
+    prev_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) -> Union{V,Nothing}
+
+Move to the previous duplicate of the current key. Returns the new value
+as `V`, or `nothing` if there are no earlier duplicates. Wraps
+`MDB_PREV_DUP`.
+"""
+function prev_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_PREV_DUP, nothing) || return nothing
+    return mbd_unpack(V, val_ref)
+end
+
+"""
+    next_nodup!(cur::Cursor, ::Type{K}=Vector{UInt8}) -> Union{K,Nothing}
+
+Advance to the first entry of the next key, skipping any remaining duplicates
+of the current key. Returns the new key as `K`, or `nothing` past the last
+key. Wraps `MDB_NEXT_NODUP`.
+"""
+function next_nodup!(cur::Cursor, ::Type{K}=Vector{UInt8}) where K
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_NEXT_NODUP, nothing) || return nothing
+    return mbd_unpack(K, key_ref)
+end
+
+"""
+    prev_nodup!(cur::Cursor, ::Type{K}=Vector{UInt8}) -> Union{K,Nothing}
+
+Move to the last entry of the previous key. Returns the new key as `K`, or
+`nothing` past the first key. Wraps `MDB_PREV_NODUP`.
+"""
+function prev_nodup!(cur::Cursor, ::Type{K}=Vector{UInt8}) where K
+    key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
+    _cursor_seek!(cur, key_ref, val_ref, MDB_PREV_NODUP, nothing) || return nothing
+    return mbd_unpack(K, key_ref)
+end
+
+"""
     walk(f, cur::Cursor; from = nothing)
 
 Walk every entry the cursor visits, calling

@@ -85,4 +85,27 @@ module LMDB_DBI
             end
         end
     end
+
+    # replace! / pop!
+    mktempdir() do dir
+        environment(dir) do env
+            start(env) do txn
+                open(txn) do dbi
+                    # replace! on a missing key returns nothing and creates the entry.
+                    @test LMDB.replace!(txn, dbi, "k", "v1") === nothing
+                    @test LMDB.tryget(txn, dbi, "k", String) == "v1"
+
+                    # replace! on an existing key returns the old value.
+                    @test LMDB.replace!(txn, dbi, "k", "v2") == "v1"
+                    @test LMDB.tryget(txn, dbi, "k", String) == "v2"
+
+                    # pop! returns the value and deletes.
+                    @test LMDB.pop!(txn, dbi, "k", String) == "v2"
+                    @test LMDB.tryget(txn, dbi, "k", String) === nothing
+                    # pop! on a missing key returns nothing.
+                    @test LMDB.pop!(txn, dbi, "k", String) === nothing
+                end
+            end
+        end
+    end
 end
