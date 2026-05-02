@@ -19,7 +19,7 @@ isopen(env::Environment) = env.handle != C_NULL
 "Create an LMDB environment handle"
 function create()
     env_ref = Ref{Ptr{MDB_env}}()
-    check(mdb_env_create(env_ref))
+    mdb_env_create(env_ref)
     return Environment(env_ref[])
 end
 
@@ -45,7 +45,7 @@ end
 """
 function open(env::Environment, path::String; flags::Cuint=zero(Cuint), mode::mode_t = mode_t(0o755))
     env.path = path
-    check(mdb_env_open(env, path, flags, mode))
+    mdb_env_open(env, path, flags, mode)
 end
 
 "Wrapper of `open` for `do` construct"
@@ -76,20 +76,20 @@ end
 """Flush the data buffers to disk"""
 function sync(env::Environment, force::Bool = false)
     fval = force ? 1 : 0
-    check(mdb_env_sync(env, fval))
+    mdb_env_sync(env, fval)
     return zero(Cint)
 end
 
 """Set environment flags"""
 function set!(env::Environment, flag::Cuint)
-    check(mdb_env_set_flags(env, flag, one(Cint)))
+    mdb_env_set_flags(env, flag, one(Cint))
     return flag
 end
 set!(env::Environment, flag::EnvironmentFlags) = set!(env, Cuint(flag))
 
 """Unset environment flags"""
 function unset!(env::Environment, flag::Cuint)
-    check(mdb_env_set_flags(env, flag, zero(Cint)))
+    mdb_env_set_flags(env, flag, zero(Cint))
     return flag
 end
 unset!(env::Environment, flag::EnvironmentFlags) = unset!(env, Cuint(flag))
@@ -112,13 +112,13 @@ function setindex!(env::Environment, val::Integer, option::Symbol)
     if option == :Flags
         set!(env, Cuint(val))
     elseif option == :Readers
-        check(mdb_env_set_maxreaders(env, Cuint(val)))
+        mdb_env_set_maxreaders(env, Cuint(val))
     elseif option == :MapSize
         # MDB_env_set_mapsize takes a size_t; using Cuint truncates >4 GiB
         # maps on 64-bit platforms (issue #38, PRs #37 / #40).
-        check(mdb_env_set_mapsize(env, Csize_t(val)))
+        mdb_env_set_mapsize(env, Csize_t(val))
     elseif option == :DBs
-        check(mdb_env_set_maxdbs(env, Cuint(val)))
+        mdb_env_set_maxdbs(env, Cuint(val))
     else
         throw(ArgumentError("Unsupported environment option :$option (supported: :Flags, :Readers, :MapSize, :DBs)"))
     end
@@ -138,9 +138,9 @@ end
 function getindex(env::Environment, option::Symbol)
     value = Ref{Cuint}(0)
     if option == :Flags
-        check(mdb_env_get_flags(env, value))
+        mdb_env_get_flags(env, value)
     elseif option == :Readers
-        check(mdb_env_get_maxreaders(env, value))
+        mdb_env_get_maxreaders(env, value)
     elseif option == :KeySize
         value[] = mdb_env_get_maxkeysize(env)
     else
@@ -153,7 +153,7 @@ end
 function info(env::Environment)
     ei_ref = Ref{MDB_envinfo}()
     !isopen(env) && return MDB_envinfo(C_NULL, 0, 0, 0, 0, 0)
-    check(mdb_env_info(env, ei_ref))
+    mdb_env_info(env, ei_ref)
     return ei_ref[]
 end
 

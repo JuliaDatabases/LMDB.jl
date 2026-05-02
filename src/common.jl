@@ -75,15 +75,5 @@ function version()
     return VersionNumber(major[], minor[], patch[]), unsafe_string(ver_str)
 end
 
-"""Return a string describing a given error code
-
-Function returns description of the error as a string. It accepts following arguments:
-* `err::Int32`: An error code.
-"""
-function errormsg(err::Cint)
-    errstr = mdb_strerror(err)
-    return unsafe_string(errstr)
-end
-
 """ Check if binary flag is set in provided value"""
 isflagset(value, flag) = (value & flag) == flag

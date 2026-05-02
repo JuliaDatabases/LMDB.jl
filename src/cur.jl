@@ -13,7 +13,7 @@ isopen(cur::Cursor) = cur.handle != C_NULL
 "Create a cursor"
 function open(txn::Transaction, dbi::DBI)
     cur_ptr_ref = Ref{Ptr{MDB_cursor}}(C_NULL)
-    check(mdb_cursor_open(txn, dbi, cur_ptr_ref))
+    mdb_cursor_open(txn, dbi, cur_ptr_ref)
     return Cursor(cur_ptr_ref[])
 end
 
@@ -37,7 +37,7 @@ end
 
 "Renew a cursor"
 function renew(txn::Transaction, cur::Cursor)
-    check(mdb_cursor_renew(txn, cur))
+    mdb_cursor_renew(txn, cur)
 end
 
 "Return the cursor's transaction"
@@ -91,9 +91,19 @@ Base.iterate(iter::LMDBIterator) = Base.iterate(iter, init_values(iter))
 function Base.iterate(iter::LMDBIterator, refs)
     mdb_key_ref, mdb_val_ref, cursor_op, key_buf = refs
 
+<<<<<<< HEAD
     # key_buf may be aliased by mdb_key_ref (e.g. DirectoryLister or
     # SET_RANGE seed) and must outlive the C call.
     ret = GC.@preserve key_buf mdb_cursor_get(iter.cur, mdb_key_ref, mdb_val_ref, cursor_op)
+||||||| parent of 54eb07a (Add @checked macro; auto-throw on tier-1 status returns.)
+    GC.@preserve key_buf begin
+        ret = mdb_cursor_get(iter.cur, mdb_key_ref, mdb_val_ref, cursor_op)
+    end
+=======
+    GC.@preserve key_buf begin
+        ret = unchecked_mdb_cursor_get(iter.cur, mdb_key_ref, mdb_val_ref, cursor_op)
+    end
+>>>>>>> 54eb07a (Add @checked macro; auto-throw on tier-1 status returns.)
 
     if ret == 0
         #Check if we are still in key prefix
@@ -165,7 +175,7 @@ This function retrieves key/data pairs from the database.
 """
 function get(cur::Cursor, key, ::Type{T}, op::MDB_cursor_op=MDB_SET_KEY) where T
     val_ref = Ref(MDBValue())
-    check(mdb_cursor_get(cur, key, val_ref, op))
+    mdb_cursor_get(cur, key, val_ref, op)
     return mbd_unpack(T, val_ref)
 end
 
@@ -174,17 +184,17 @@ end
 This function stores key/data pairs into the database. The cursor is positioned at the new item, or on failure usually near it.
 """
 function put!(cur::Cursor, key, val; flags::Cuint = zero(Cuint))
-    check(mdb_cursor_put(cur, key, val, flags))
+    mdb_cursor_put(cur, key, val, flags)
 end
 
 "Delete current key/data pair to which the cursor refers"
 function delete!(cur::Cursor; flags::Cuint = zero(Cuint))
-    check(mdb_cursor_del(cur, flags))
+    mdb_cursor_del(cur, flags)
 end
 
 "Return count of duplicates for current key"
 function count(cur::Cursor)
     countp = Ref(Csize_t(0))
-    check(mdb_cursor_count(cur, countp))
+    mdb_cursor_count(cur, countp)
     return Int(countp[])
 end
