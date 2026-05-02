@@ -59,16 +59,6 @@ function Base.cconvert(::Type{Ptr{MDB_val}}, x::T) where {T}
     MDBArg(Ref(x))
 end
 
-# Private: build an `MDB_val` whose `mv_data` aliases `buf`. The pointer
-# is taken via `unsafe_convert`; the caller MUST keep `buf` alive across
-# any ccall that reads the resulting `MDB_val` (in practice, by wrapping
-# the call site in `GC.@preserve buf ...`). Used by the cursor iterator,
-# which already threads its key buffer through the iteration state for
-# exactly this reason.
-@inline _mdb_val_for(buf::Vector{T}) where {T} =
-    MDB_val(Csize_t(sizeof(T) * length(buf)),
-            Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, buf)))
-
 """
     mdb_unpack(::Type{T}, ref::Ref{MDB_val}) -> T
 

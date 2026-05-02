@@ -203,6 +203,19 @@ function Base.pop!(d::LMDBDict{K,V}, k, default) where {K,V}
     end
 end
 
+# `pop!(d)` without a key — pops the first entry, mirroring `Base.pop!(::Dict)`.
+function Base.pop!(d::LMDBDict{K,V}) where {K,V}
+    txn_dbi_do(d) do txn, dbi
+        LMDB.open(txn, dbi) do cur
+            LMDB.seek!(cur, K) === nothing &&
+                throw(ArgumentError("LMDBDict must be non-empty"))
+            pair = LMDB.item(cur, K, V)
+            LMDB.delete!(cur)
+            return pair
+        end
+    end
+end
+
 function Base.empty!(d::LMDBDict)
     txn_dbi_do(d) do txn, dbi
         LMDB.drop(txn, dbi; delete = false)

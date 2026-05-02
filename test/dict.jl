@@ -44,8 +44,12 @@ using Test, LMDB
         @test pop!(d, "z", :missing) === :missing
         @test pop!(d, "y") === 12.0
         @test !haskey(d, "y")
-
         @test LMDB.valuesize(d) == sizeof(Float64)*1  # only "x" left
+
+        # `pop!(d)` (no key) pops the lexicographically-first entry.
+        @test pop!(d) == ("x" => 5.0)
+        @test isempty(d)
+        @test_throws ArgumentError pop!(d)
         close(d)
     end
 
