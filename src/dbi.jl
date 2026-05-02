@@ -72,9 +72,34 @@ function delete!(txn::Transaction, dbi::DBI, key, val=C_NULL)
     mdb_del(txn, dbi, key, val_arg)
 end
 
-"Get items from a database"
+"""Return statistics for the database referenced by `dbi` within `txn`
+(page size, B-tree depth, page counts, total entries)."""
+function stat(txn::Transaction, dbi::DBI)
+    s_ref = Ref{MDB_stat}()
+    mdb_stat(txn, dbi, s_ref)
+    return s_ref[]
+end
+
+"""Get an item from a database. Throws `LMDBError` if `key` is not present."""
 function get(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
     val_ref = Ref(MDBValue())
     mdb_get(txn, dbi, key, val_ref)
     return mbd_unpack(T, val_ref)
+end
+
+"""Get an item from a database, returning `nothing` if `key` is not present.
+Use this in preference to `get` + try/catch when a missing key is expected."""
+function tryget(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
+    val_ref = Ref(MDBValue())
+    ret = unchecked_mdb_get(txn, dbi, key, val_ref)
+    ret == MDB_NOTFOUND && return nothing
+    iszero(ret) || throw(LMDBError(ret))
+    return mbd_unpack(T, val_ref)
+end
+
+"""Get an item from a database, returning `default` if `key` is not present.
+The signature mirrors `Base.get(dict, key, default)`."""
+function get(txn::Transaction, dbi::DBI, key, ::Type{T}, default) where T
+    v = tryget(txn, dbi, key, T)
+    v === nothing ? default : v
 end

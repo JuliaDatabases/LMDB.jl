@@ -43,6 +43,13 @@ module LMDB_Env
         ret = open(env, dbname)
         @test ret[1] == 0
 
+        # stat(env) returns the main DB's stats; before any puts, there are
+        # no entries and a positive page size.
+        s = stat(env)
+        @test s isa LMDB.MDB_stat
+        @test s.ms_psize > 0
+        @test s.ms_entries == 0
+
         # Close environment
         close(env)
         @test !isopen(env)

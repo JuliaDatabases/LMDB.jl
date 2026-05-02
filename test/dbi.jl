@@ -58,7 +58,31 @@ module LMDB_DBI
                 end
             end
         end
+
     finally
         rm(dbname, recursive=true)
+    end
+
+    # tryget / get-with-default / stat(txn, dbi) — fresh env so the entry
+    # count is deterministic.
+    mktempdir() do dir
+        environment(dir) do env
+            start(env) do txn
+                open(txn) do dbi
+                    LMDB.put!(txn, dbi, "k1", "v1")
+                    LMDB.put!(txn, dbi, "k2", "v2")
+
+                    @test LMDB.tryget(txn, dbi, "k1", String) == "v1"
+                    @test LMDB.tryget(txn, dbi, "missing", String) === nothing
+                    @test get(txn, dbi, "k2", String, "fallback") == "v2"
+                    @test get(txn, dbi, "missing", String, "fallback") == "fallback"
+
+                    s = LMDB.stat(txn, dbi)
+                    @test s isa LMDB.MDB_stat
+                    @test s.ms_entries == 2
+                    @test s.ms_psize > 0
+                end
+            end
+        end
     end
 end

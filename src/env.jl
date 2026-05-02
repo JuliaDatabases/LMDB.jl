@@ -164,6 +164,14 @@ function info(env::Environment)
     return ei_ref[]
 end
 
+"""Return statistics about the LMDB environment's main database (page size,
+B-tree depth, page counts, total entries)."""
+function stat(env::Environment)
+    s_ref = Ref{MDB_stat}()
+    mdb_env_stat(env, s_ref)
+    return s_ref[]
+end
+
 function show(io::IO, env::Environment)
     print(io,"Environment is ", isopen(env) ? (isempty(env.path) ? "created" : "opened") : "closed")
     if !isempty(env.path)

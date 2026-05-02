@@ -1,11 +1,11 @@
 module LMDB
 
 import Base: open, close, getindex, setindex!, put!, reset,
-             isopen, count, delete!, keys, get, show
+             isopen, count, delete!, keys, get, show, stat
 
-export Environment, create, open, close, sync, set!, unset!, getindex, setindex!, path, info, show,
+export Environment, create, open, close, sync, set!, unset!, getindex, setindex!, path, info, stat, show,
        Transaction, start, abort, commit, reset, renew, environment,
-       DBI, drop, delete!, keys, get, put!,
+       DBI, drop, delete!, keys, get, put!, tryget,
        Cursor, count, transaction, database,
        isflagset, isopen,
        LMDBError, LMDBDict
