@@ -2,6 +2,32 @@ module LMDB_Integration
     using LMDB
     using Test
 
+    # cuTile-shaped framed value: 8-byte LE atime prefix, then the payload.
+    # Defined here at module scope to demonstrate the `mdb_unpack` extension
+    # contract and to regression-guard it (a downstream package — cuTile's
+    # DiskCache — relies on being able to plug in its own unpack method
+    # without touching LMDB.jl internals).
+    struct AtimedBlob end
+    const _ATIME_PREFIX = 8
+
+    function LMDB.mdb_unpack(::Type{AtimedBlob}, ref::Ref{LMDB.MDB_val})
+        v = ref[]
+        sz = Int(v.mv_size)
+        sz < _ATIME_PREFIX && return UInt8[]
+        out = Vector{UInt8}(undef, sz - _ATIME_PREFIX)
+        unsafe_copyto!(pointer(out),
+                       Ptr{UInt8}(v.mv_data) + _ATIME_PREFIX,
+                       sz - _ATIME_PREFIX)
+        return out
+    end
+
+    pack_atimed(atime::UInt64, payload::Vector{UInt8}) = begin
+        out = Vector{UInt8}(undef, _ATIME_PREFIX + length(payload))
+        GC.@preserve out unsafe_store!(Ptr{UInt64}(pointer(out)), htol(atime))
+        copyto!(out, _ATIME_PREFIX + 1, payload, 1, length(payload))
+        out
+    end
+
     # Power-user pattern: open an env via the Environment kwargs ctor, run
     # a write txn through tier-2, then a read txn through a cursor walk
     # using only tier-2 + raw MDB_val refs (the shape cuTile.DiskCache
@@ -64,6 +90,19 @@ module LMDB_Integration
                 @test LMDB.tryget(txn, dbi, "key1", String) === nothing
                 @test LMDB.tryget(txn, dbi, "key2", String) == "value2"
                 @test LMDB.tryget(txn, dbi, "key3", String) === nothing
+            end
+
+            # mdb_unpack extension: write an 8-byte-prefixed framed value
+            # and read it back via `tryget(..., AtimedBlob)`, getting the
+            # payload tail in a single copy with no slicing.
+            payload = Vector{UInt8}("cubin-bytes-here")
+            atime = UInt64(0xdeadbeefcafebabe)
+            start(env) do txn
+                LMDB.put!(txn, dbi, "framed", pack_atimed(atime, payload))
+            end
+            start(env; flags = MDB_RDONLY) do txn
+                @test LMDB.tryget(txn, dbi, "framed", AtimedBlob) == payload
+                @test LMDB.tryget(txn, dbi, "ghost",  AtimedBlob) === nothing
             end
         finally
             close(env)
