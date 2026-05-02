@@ -63,4 +63,44 @@ module LMDB_Env
     finally
         rm(dbname, recursive=true)
     end
+
+    # reader_check / reader_list / copy
+    mktempdir() do dir
+        environment(dir) do env
+            # Fresh env: no stale readers.
+            @test reader_check(env) == 0
+
+            # reader_list always emits a header line listing slot fields.
+            txt = reader_list(env)
+            @test txt isa String
+            @test !isempty(txt)
+
+            # Round-trip a copy.
+            start(env) do txn
+                open(txn) do dbi
+                    LMDB.put!(txn, dbi, "k", "v")
+                end
+            end
+            mktempdir() do dst
+                copy(env, dst)
+                environment(dst) do env2
+                    start(env2) do txn
+                        open(txn) do dbi
+                            @test LMDB.tryget(txn, dbi, "k", String) == "v"
+                        end
+                    end
+                end
+            end
+            mktempdir() do dst
+                copy(env, dst; compact=true)
+                environment(dst) do env2
+                    start(env2) do txn
+                        open(txn) do dbi
+                            @test LMDB.tryget(txn, dbi, "k", String) == "v"
+                        end
+                    end
+                end
+            end
+        end
+    end
 end

@@ -172,6 +172,84 @@ function stat(env::Environment)
     return s_ref[]
 end
 
+"""
+    copy(env::Environment, path::AbstractString; compact=false)
+
+Copy the LMDB environment to a directory at `path`. With `compact=true`,
+omit free-space pages so the destination is approximately as small as the
+live data set. The destination directory must already exist (and on most
+filesystems must be empty).
+
+Wraps `mdb_env_copy` / `mdb_env_copy2`.
+"""
+function copy(env::Environment, path::AbstractString; compact::Bool = false)
+    if compact
+        mdb_env_copy2(env, String(path), MDB_CP_COMPACT)
+    else
+        mdb_env_copy(env, String(path))
+    end
+    return path
+end
+
+"""
+    copy(env::Environment, fd::Integer; compact=false)
+
+Copy the LMDB environment into the open file descriptor `fd` (typically a
+pipe or socket). With `compact=true`, omit free-space pages.
+
+Wraps `mdb_env_copyfd` / `mdb_env_copyfd2`.
+"""
+function copy(env::Environment, fd::Integer; compact::Bool = false)
+    if compact
+        mdb_env_copyfd2(env, Cint(fd), MDB_CP_COMPACT)
+    else
+        mdb_env_copyfd(env, Cint(fd))
+    end
+    return fd
+end
+
+"""
+    reader_check(env::Environment) -> Int
+
+Check for stale readers (transactions started by processes that have died
+without releasing them) and reap their slots. Returns the number of slots
+that were cleared. Useful in long-running services to recover from
+abnormally-terminated readers.
+
+Wraps `mdb_reader_check`.
+"""
+function reader_check(env::Environment)
+    dead = Ref{Cint}(0)
+    mdb_reader_check(env, dead)
+    return Int(dead[])
+end
+
+# Callback for `mdb_reader_list` — appends the message to the IOBuffer
+# referenced through `ctx`. Returns 0 to continue, non-zero to stop.
+function _reader_list_cb(msg::Ptr{Cchar}, ctx::Ptr{Cvoid})::Cint
+    io = unsafe_pointer_to_objref(ctx)::IOBuffer
+    write(io, unsafe_string(msg))
+    return Cint(0)
+end
+
+"""
+    reader_list(env::Environment) -> String
+
+Return a human-readable listing of the environment's reader slots: one
+header line plus one line per active reader (PID, thread ID, transaction
+ID). Useful for diagnosing reader-table contention.
+
+Wraps `mdb_reader_list`.
+"""
+function reader_list(env::Environment)
+    io = IOBuffer()
+    cb = @cfunction(_reader_list_cb, Cint, (Ptr{Cchar}, Ptr{Cvoid}))
+    GC.@preserve io begin
+        mdb_reader_list(env, cb, pointer_from_objref(io))
+    end
+    return String(take!(io))
+end
+
 function show(io::IO, env::Environment)
     print(io,"Environment is ", isopen(env) ? (isempty(env.path) ? "created" : "opened") : "closed")
     if !isempty(env.path)
