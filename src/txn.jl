@@ -9,8 +9,8 @@ its finalizer aborts it.
 """
 mutable struct Transaction
     handle::Ptr{MDB_txn}
-    env::Union{Environment, Nothing}
-    function Transaction(env::Union{Environment, Nothing}, h::Ptr{MDB_txn})
+    env::Environment
+    function Transaction(env::Environment, h::Ptr{MDB_txn})
         t = new(h, env)
         finalizer(_finalize_txn, t)
         return t

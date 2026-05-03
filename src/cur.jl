@@ -7,8 +7,8 @@ finalizer closes any still-open handle.
 """
 mutable struct Cursor
     handle::Ptr{MDB_cursor}
-    txn::Union{Transaction, Nothing}
-    function Cursor(txn::Union{Transaction, Nothing}, h::Ptr{MDB_cursor})
+    txn::Transaction
+    function Cursor(txn::Transaction, h::Ptr{MDB_cursor})
         c = new(h, txn)
         finalizer(close, c)
         return c

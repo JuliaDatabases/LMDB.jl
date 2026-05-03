@@ -1,8 +1,7 @@
 module LMDB
 
 import Base: open, close, getindex, setindex!, put!, reset,
-             isopen, count, delete!, keys, get, show, show
-import Base.Iterators: drop
+             isopen, count, delete!, keys, get, show
 
 export
     # error type + matchers
