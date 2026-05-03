@@ -198,6 +198,13 @@ using Test, LMDB
             @test sort(collect(keys(d))) == ["a", "b", "c"]
             @test d["b"] == 2
 
+            # mergewith! combines existing values via `combine`, falls back
+            # to the new value when the key is absent.
+            mergewith!(+, d, Dict("a" => 10, "d" => 4))
+            @test d["a"] == 11
+            @test d["d"] == 4
+            @test d["b"] == 2
+
             filter!(p -> isodd(p.second), d)
             @test sort(collect(keys(d))) == ["a", "c"]
             close(d)

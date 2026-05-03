@@ -224,8 +224,49 @@ function Base.empty!(d::LMDBDict)
 end
 
 # AbstractDict's default implementations of `keys`, `values`, `pairs`,
-# `merge!`, `filter!`, `==`, `hash`, `in(::Pair, d)` etc. all kick in for
-# free now that `iterate` and `length` are defined.
+# `==`, `hash`, `in(::Pair, d)` etc. all kick in for free now that
+# `iterate` and `length` are defined.
+
+# Override the bulk-update fallbacks so they land in a single LMDB write
+# txn. AbstractDict's default `merge!` / `mergewith!` / `filter!` call
+# `d[k]=v` / `delete!(d,k)` in a loop, and each of those opens its own
+# write txn (and commit/fsync) per pair.
+function Base.merge!(d::LMDBDict{K,V}, others::AbstractDict...) where {K,V}
+    txn_dbi_do(d) do txn, dbi
+        for other in others, (k, v) in other
+            LMDB.put!(txn, dbi, convert(K, k), convert(V, v))
+        end
+    end
+    return d
+end
+
+function Base.mergewith!(combine, d::LMDBDict{K,V}, others::AbstractDict...) where {K,V}
+    txn_dbi_do(d) do txn, dbi
+        for other in others, (k, v) in other
+            kk = convert(K, k)
+            existing = LMDB.tryget(txn, dbi, kk, V)
+            new = existing === nothing ? convert(V, v) :
+                                          convert(V, combine(existing, v))
+            LMDB.put!(txn, dbi, kk, new)
+        end
+    end
+    return d
+end
+
+function Base.filter!(f, d::LMDBDict{K,V}) where {K,V}
+    txn_dbi_do(d) do txn, dbi
+        to_delete = K[]
+        LMDB.open(txn, dbi) do cur
+            LMDB.walk(cur, K, V) do k, v
+                f(k => v) || push!(to_delete, k)
+            end
+        end
+        for k in to_delete
+            LMDB.delete!(txn, dbi, k)
+        end
+    end
+    return d
+end
 
 # --- prefix-scan helpers (LMDB-namespaced; not Base extensions) ---
 
