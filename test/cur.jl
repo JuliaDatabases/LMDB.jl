@@ -144,4 +144,28 @@ module LMDB_CUR
             end
         end
     end
+
+    # Cursor.delete!: removes the entry the cursor is on; LMDB advances to
+    # the next entry. Throws on an unpositioned cursor (EINVAL), unlike the
+    # txn-based `delete!(txn, dbi, key)` which is Bool-returning on
+    # MDB_NOTFOUND.
+    mktempdir() do dir
+        environment(dir) do env
+            start(env) do txn
+                open(txn) do dbi
+                    LMDB.put!(txn, dbi, "a", "1")
+                    LMDB.put!(txn, dbi, "b", "2")
+
+                    LMDB.open(txn, dbi) do cur
+                        @test LMDB.seek!(cur, "a", String) == "a"
+                        LMDB.delete!(cur)             # removes "a", cursor now on "b"
+                        LMDB.delete!(cur)             # removes "b"
+                        @test_throws LMDBError LMDB.delete!(cur)  # no live entry
+                    end
+                    @test LMDB.tryget(txn, dbi, "a", String) === nothing
+                    @test LMDB.tryget(txn, dbi, "b", String) === nothing
+                end
+            end
+        end
+    end
 end

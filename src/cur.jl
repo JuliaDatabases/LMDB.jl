@@ -482,9 +482,20 @@ function put!(cur::Cursor, key, val; flags::Integer = zero(Cuint))
     mdb_cursor_put(cur, key, val, Cuint(flags))
 end
 
-"Delete current key/data pair to which the cursor refers"
+"""
+    delete!(cur::Cursor; flags=0)
+
+Delete the entry the cursor is currently positioned at. Throws
+`LMDBError` if the cursor is not on a live entry (LMDB returns `EINVAL`,
+not `MDB_NOTFOUND`, so the Bool/idempotent shape used by
+`delete!(txn, dbi, key)` doesn't apply here — position the cursor first
+with `seek!`/`next!` if you need to recover from a missing entry.
+
+After a successful delete, LMDB advances the cursor to the next entry.
+"""
 function delete!(cur::Cursor; flags::Integer = zero(Cuint))
     mdb_cursor_del(cur, Cuint(flags))
+    return
 end
 
 "Return count of duplicates for current key"

@@ -180,7 +180,8 @@ function getindex(env::Environment, option::Symbol)
     elseif option == :KeySize
         value[] = mdb_env_get_maxkeysize(env)
     else
-        @warn("Cannot get $(string(option)) value")
+        throw(ArgumentError("unknown environment option `:$(option)` " *
+            "(supported: :Flags, :Readers, :KeySize)"))
     end
     return value[]
 end
