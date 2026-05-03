@@ -1,5 +1,10 @@
 # LMDB.jl
 
+[![CI](https://github.com/maleadt/LMDB.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/maleadt/LMDB.jl/actions/workflows/CI.yml)
+[![codecov](https://codecov.io/gh/maleadt/LMDB.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/maleadt/LMDB.jl)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://maleadt.github.io/LMDB.jl/stable)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://maleadt.github.io/LMDB.jl/dev)
+
 Julia bindings for [LMDB](http://www.lmdb.tech/doc/), the Lightning
 Memory-Mapped Database — an embedded, memory-mapped, ACID key-value
 store developed by Symas for OpenLDAP. Small, fast, persisted to disk,

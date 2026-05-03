@@ -1,5 +1,7 @@
 using Documenter, LMDB
 
+DocMeta.setdocmeta!(LMDB, :DocTestSetup, :(using LMDB); recursive = true)
+
 function main()
     ci = get(ENV, "CI", "") == "true"
 
@@ -10,6 +12,7 @@ function main()
                                  edit_link = "master"),
         modules = [LMDB],
         checkdocs = :exports,
+        doctest = true,
         pages = [
             "Home" => "index.md",
             "Usage" => [
