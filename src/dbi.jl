@@ -46,6 +46,12 @@ function flags(txn::Transaction, dbi::DBI)
     return flags[]
 end
 
+function Base.show(io::IO, dbi::DBI)
+    print(io, "DBI(")
+    isempty(dbi.name) ? print(io, "<main>") : show(io, dbi.name)
+    print(io, ", ", isopen(dbi) ? "open" : "closed", ")")
+end
+
 """Empty or delete+close a database.
 
 If parameter `delete` is `false` DB will be emptied, otherwise

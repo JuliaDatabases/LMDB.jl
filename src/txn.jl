@@ -93,3 +93,6 @@ It must be called before a reset transaction may be used again.
 function renew(txn::Transaction)
     check(mdb_txn_renew(txn))
 end
+
+Base.show(io::IO, txn::Transaction) =
+    print(io, "Transaction(", isopen(txn) ? "open" : "closed", ")")

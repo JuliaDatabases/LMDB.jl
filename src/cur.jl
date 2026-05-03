@@ -66,6 +66,9 @@ function database(cur::Cursor)
     return DBI(dbi, "")
 end
 
+Base.show(io::IO, cur::Cursor) =
+    print(io, "Cursor(", isopen(cur) ? "open" : "closed", ")")
+
 "Type to implement the Iterator interface"
 struct LMDBIterator{R}
    cur::Cursor
