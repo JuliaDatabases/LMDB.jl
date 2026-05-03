@@ -63,6 +63,42 @@ show(io::IO, err::LMDBError) = print(io, "Code[$(err.code)]: $(err.msg)")
 "Throw an `LMDBError` if `code` is non-zero. Returns `code` otherwise."
 @inline check(code) = iszero(code) ? code : throw(LMDBError(code))
 
+"""
+    is_notfound(err::LMDBError) -> Bool
+
+`true` if `err.code == MDB_NOTFOUND` (LMDB's "key not present" status).
+
+Use this to recover from a missing key when the lookup is not point-typed
+(otherwise `tryget` / `get(..., default)` are simpler):
+
+```julia
+try
+    LMDB.get(txn, dbi, "key", String)
+catch e
+    e isa LMDBError && is_notfound(e) || rethrow()
+    # treat as missing
+end
+```
+"""
+is_notfound
+
+"""
+    is_keyexist(err::LMDBError) -> Bool
+
+`true` if `err.code == MDB_KEYEXIST`. Raised by `put!` with `MDB_NOOVERWRITE`
+or `MDB_NODUPDATA` when the key (or duplicate) is already present.
+"""
+is_keyexist
+
+"""
+    is_map_full(err::LMDBError) -> Bool
+
+`true` if `err.code == MDB_MAP_FULL`. Raised when a write txn would exceed
+the environment's `MapSize`. The remedy is to grow `mapsize` (which can be
+done after `close(env)` without rewriting the database).
+"""
+is_map_full
+
 # ---------------------------------------------------------------------------
 # Tier 1 — raw bindings, types, constants. Public-but-unexported.
 #

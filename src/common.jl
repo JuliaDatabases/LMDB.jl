@@ -60,48 +60,145 @@ function Base.cconvert(::Type{Ptr{MDB_val}}, x::T) where {T}
 end
 
 """
-    mdb_unpack(::Type{T}, ref::Ref{MDB_val}) -> T
+    MDBValueIO(v::MDB_val) <: IO
+    MDBValueIO(ref::Ref{MDB_val}) <: IO
 
-Decode an `MDB_val` (size + raw `mv_data` pointer) into a Julia value of
-type `T`. Called by `tryget` / `get` / cursor accessors after a
-successful read. Default methods cover `String`, `Vector{E}` for any
-bitstype `E`, and any bitstype scalar; all of them copy out so the
-returned value is safe to keep past the producing transaction.
+A read-only `IO` view over an LMDB-owned `MDB_val`. Wraps the
+`(mv_data, mv_size)` pair as a positionable byte stream so the
+package's typed-read path is the standard `Base.read(io, T)`.
 
-This is the package's customization point for typed reads — analogous
-to heed's `BytesDecode<'txn>` trait. To plug in a custom value
-representation (e.g. skip a framing prefix, parse a tagged buffer,
-build a non-bitstype struct), define a method on a marker type:
+Any `T` for which `Base.read(io::IO, ::Type{T})` is defined can be
+passed to `tryget` / `get` / `key` / `value` / `item` / typed `walk` /
+`pop!` / `replace!`. Out of the box this covers everything Base ships:
+the primitive numeric types (`Int8`/…/`Int128`, `Float16`/…/`Float64`,
+`Bool`, `Char`, `Ptr{T}`) plus `String`, all zero-allocation thanks to
+the `@inline` `unsafe_read` override below. The package adds two more
+overloads — `Vector{E}` for any bitstype `E` and `UInt8` — that
+consume the remaining buffer in a single copy.
+
+To plug in a custom representation — including bitstype structs that
+Base's primitive reads don't cover — define a single `Base.read`
+method on your own type. Defining it on the abstract `IO` is the
+idiomatic Julia form and keeps the decoder portable to other byte
+sources:
 
     struct PrefixedBlob end
-    function LMDB.mdb_unpack(::Type{PrefixedBlob}, ref::Ref{LMDB.MDB_val})
-        v = ref[]; sz = Int(v.mv_size)
-        sz < 8 && return UInt8[]
-        out = Vector{UInt8}(undef, sz - 8)
-        unsafe_copyto!(pointer(out),
-                       Ptr{UInt8}(v.mv_data) + 8, sz - 8)
-        out
+    function Base.read(io::IO, ::Type{PrefixedBlob})
+        bytesavailable(io) < 8 && return UInt8[]
+        skip(io, 8)
+        return read(io, Vector{UInt8})
     end
 
     LMDB.tryget(txn, dbi, key, PrefixedBlob)   # → Union{Vector{UInt8}, Nothing}
 
-The `mv_data` pointer is into LMDB's mmap and is only valid for the
-producing transaction's lifetime. Custom unpack methods must copy what
-they want to keep, exactly as the default `Vector{E}` method does.
+For an `isbitstype` struct `T`, the one-liner is the standard Base
+pattern:
+
+    Base.read(io::IO, ::Type{T}) = read!(io, Ref{T}())[]
+
+This is the analogue of heed's `BytesDecode<'txn>` trait, expressed
+through Julia's existing IO extension point rather than a bespoke
+function.
+
+The underlying buffer points into LMDB's mmap and is **only valid for
+the producing transaction's lifetime** — copy out anything you want to
+retain past commit/abort. The default `String` and `Vector{E}` reads
+both copy.
 """
-mdb_unpack(::Type{T}, mdb_val_ref::Ref{MDB_val}) where {T} = _mdb_unpack(T, mdb_val_ref[])
-function _mdb_unpack(::Type{T}, mdb_val::MDB_val) where {T <: String}
-    unsafe_string(convert(Ptr{UInt8}, mdb_val.mv_data), mdb_val.mv_size)
+mutable struct MDBValueIO <: IO
+    ptr::Ptr{UInt8}
+    size::Int
+    pos::Int
 end
-function _mdb_unpack(::Type{V}, mdb_val::MDB_val) where {T, V <: Vector{T}}
-    # The MDB_val data points into the LMDB-owned mmap and is only valid for
-    # the lifetime of the transaction. Copy out so the returned Vector owns
-    # its memory and is safe to retain past commit/abort (issue #41).
-    src = unsafe_wrap(Array, convert(Ptr{UInt8}, mdb_val.mv_data), mdb_val.mv_size)
-    copy(reinterpret(T, src))
+@inline MDBValueIO(v::MDB_val) =
+    MDBValueIO(Ptr{UInt8}(v.mv_data), Int(v.mv_size), 0)
+@inline MDBValueIO(ref::Ref{MDB_val}) = MDBValueIO(ref[])
+
+# IO interface primitives. Defining `read(::MDBValueIO, ::Type{UInt8})`
+# and `unsafe_read(::MDBValueIO, ::Ptr{UInt8}, ::UInt)` is enough to
+# inherit Base's generic numeric and array reads; the rest are
+# convenience getters.
+@inline Base.isreadable(::MDBValueIO) = true
+@inline Base.iswritable(::MDBValueIO) = false
+@inline Base.eof(io::MDBValueIO)            = io.pos >= io.size
+@inline Base.position(io::MDBValueIO)       = io.pos
+@inline Base.bytesavailable(io::MDBValueIO) = io.size - io.pos
+@inline function Base.seek(io::MDBValueIO, n::Integer)
+    io.pos = clamp(Int(n), 0, io.size)
+    return io
 end
-function _mdb_unpack(::Type{T}, mdb_val::MDB_val) where {T}
-    unsafe_load(convert(Ptr{T}, mdb_val.mv_data))
+@inline Base.seekstart(io::MDBValueIO) = (io.pos = 0; io)
+@inline Base.seekend(io::MDBValueIO)   = (io.pos = io.size; io)
+@inline function Base.skip(io::MDBValueIO, n::Integer)
+    io.pos = clamp(io.pos + Int(n), 0, io.size)
+    return io
+end
+
+@inline function Base.unsafe_read(io::MDBValueIO, dst::Ptr{UInt8}, n::UInt)
+    p = io.pos
+    p + n <= io.size || throw(EOFError())
+    GC.@preserve io unsafe_copyto!(dst, io.ptr + p, n)
+    io.pos = p + Int(n)
+    return nothing
+end
+
+# Override Base's `@noinline unsafe_read(::IO, ::Ref{T}, ::Integer)`
+# (base/io.jl, "mark noinline to ensure ref is gc-rooted somewhere by the
+# caller"). The barrier is correct in general but blocks SROA from
+# eliminating the `Ref{T}(0)` that Base's `read(::IO, T::Union{Int16,…})`
+# allocates. Our copy is bytewise into Julia memory and needs no GC root,
+# so we inline through the Ref→Ptr conversion and let escape analysis
+# elide the box. This is what makes plain `read(io, T)` for primitive
+# numeric `T` allocation-free without needing per-type fast paths.
+@inline Base.unsafe_read(io::MDBValueIO, p::Ref{T}, n::Integer) where {T} =
+    unsafe_read(io, Base.unsafe_convert(Ref{T}, p)::Ptr, n)
+
+@inline Base.unsafe_read(io::MDBValueIO, p::Ptr, n::Integer) =
+    unsafe_read(io, convert(Ptr{UInt8}, p), convert(UInt, n))
+
+@inline function Base.read(io::MDBValueIO, ::Type{UInt8})
+    p = io.pos
+    p < io.size || throw(EOFError())
+    b = unsafe_load(io.ptr + p)
+    io.pos = p + 1
+    return b
+end
+
+# Note: we deliberately don't define a `Base.read(io::MDBValueIO, ::Type{T})
+# where T` catch-all for `isbitstype(T)`. Such a generic conflicts with
+# users defining the idiomatic `Base.read(io::IO, ::Type{MyT})` — Julia
+# treats `(MDBValueIO, Type{T} where T)` and `(IO, Type{MyT})` as
+# unordered (one is more specific in arg1, the other in arg2), so the
+# call ambiguates. Instead, we rely on Base's existing
+# `read(::IO, T::Union{Int8,…,Float64,Bool,Char,Ptr})` specialisations
+# for the well-known primitives; our `@inline unsafe_read` above lets
+# the optimiser elide the `Ref{T}` Base allocates internally, so they
+# stay zero-allocation. User-defined types — including `isbitstype`
+# structs — just need a one-line `Base.read(io::IO, ::Type{MyT})` method
+# defined wherever the user owns the type.
+
+# Whole-blob defaults: read everything from the current position to the end.
+# These mirror what users intuitively expect when calling `read(io, T)`
+# against an LMDB-backed value (`String` and `Vector{E}` consume the rest
+# of the buffer).
+@inline function Base.read(io::MDBValueIO, ::Type{String})
+    p = io.pos
+    n = io.size - p
+    s = GC.@preserve io unsafe_string(io.ptr + p, n)
+    io.pos = io.size
+    return s
+end
+
+@inline function Base.read(io::MDBValueIO, ::Type{Vector{T}}) where {T}
+    p = io.pos
+    nbytes = io.size - p
+    n, r = divrem(nbytes, sizeof(T))
+    iszero(r) || throw(ArgumentError(
+        "MDB value byte size $(nbytes) is not a multiple of sizeof($T)=$(sizeof(T))"))
+    out = Vector{T}(undef, n)
+    GC.@preserve io out unsafe_copyto!(Ptr{UInt8}(pointer(out)), io.ptr + p, nbytes)
+    io.pos = io.size
+    return out
 end
 
 
