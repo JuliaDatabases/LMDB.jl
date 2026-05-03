@@ -1,10 +1,49 @@
 # LMDB.jl
 
-[*LMDB.jl*](https://github.com/wildart/LMDB.jl) is a [Julia](http://www.julialang.org) package for interfacing with LMDB database.
+*A Julia wrapper for [LMDB](http://www.lmdb.tech/doc/), the Lightning
+Memory-Mapped Database.*
 
-[Lightning Memory-Mapped Database (LMDB)](http://symas.com/mdb/) is an ultra-fast,
-ultra-compact key-value embedded data store developed by Symas for the OpenLDAP Project.
-It uses memory-mapped files, so it has the read performance of a pure in-memory
-database while still offering the persistence of standard disk-based databases,
-and is only limited to the size of the virtual address space.
-This module provides a Julia interface to LMDB.
+LMDB is an embedded, memory-mapped, ACID key-value store developed by
+Symas for OpenLDAP. It is small, fast, and persists to disk while reading
+at near in-memory speeds — limited only by the size of the virtual address
+space.
+
+```julia
+using Pkg; Pkg.add("LMDB")
+```
+
+## Three layers of abstraction
+
+LMDB.jl exposes three tiers, each with a clear consumer:
+
+| Tier | Surface | When to use |
+|------|---------|-------------|
+| **3** | `LMDBDict <: AbstractDict{K,V}` | "I want a persistent `Dict`." |
+| **2** | `Environment`, `Transaction`, `DBI`, `Cursor` | Julian wrappers with explicit transactions and cursors. The recommended surface for most code. |
+| **1** | `LMDB.mdb_*`, `LMDB.MDB_*` | Raw `ccall` bindings + status-code constants. For power users integrating with custom data layouts or shaving allocations on hot paths. |
+
+A light **tier 1.5** sits between tier 1 and tier 2: `MDBValue`, `MDBArg`,
+and the [`MDBValueIO`](@ref LMDB.MDBValueIO) extension point — an `IO`
+view over `MDB_val` that lets custom value representations plug into
+all the typed reads via `Base.read(io, T)`.
+
+The Usage section is organised in increasing order of complexity: start
+with [Essentials](@ref) for a working example, then [Dictionary
+interface](@ref) for the `LMDBDict` surface, and progress through
+[Environments](@ref), [Transactions](@ref), [Databases](@ref),
+[Cursors](@ref), and [Duplicate-sort databases](@ref) as you need them.
+[Low-level bindings](@ref) covers the `ccall` surface for callers who need
+to skip the wrappers.
+
+The API reference mirrors the same structure but lists every exported and
+public docstring.
+
+## A 5-line example
+
+```julia
+using LMDB
+d = LMDBDict{String, Vector{Float32}}("/tmp/mydb")
+d["alpha"]  = Float32[1, 2, 3]
+@show d["alpha"]
+close(d)
+```
