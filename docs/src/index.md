@@ -14,18 +14,18 @@ using Pkg; Pkg.add("LMDB")
 
 ## Three layers of abstraction
 
-LMDB.jl exposes three tiers, each with a clear consumer:
+LMDB.jl exposes three layers, each with a clear consumer:
 
-| Tier | Surface | When to use |
-|------|---------|-------------|
-| **3** | `LMDBDict <: AbstractDict{K,V}` | "I want a persistent `Dict`." |
-| **2** | `Environment`, `Transaction`, `DBI`, `Cursor` | Julian wrappers with explicit transactions and cursors. The recommended surface for most code. |
-| **1** | `LMDB.mdb_*`, `LMDB.MDB_*` | Raw `ccall` bindings + status-code constants. For power users integrating with custom data layouts or shaving allocations on hot paths. |
+| Layer | Surface | When to use |
+|-------|---------|-------------|
+| **High-level abstractions** | `LMDBDict <: AbstractDict{K,V}` | "I want a persistent `Dict`." |
+| **Julia API** | `Environment`, `Transaction`, `DBI`, `Cursor` | Julian wrappers with explicit transactions and cursors. The recommended surface for most code. |
+| **C API** | `LMDB.mdb_*`, `LMDB.MDB_*` | Raw `ccall` bindings + status-code constants. For power users integrating with custom data layouts or shaving allocations on hot paths. |
 
-A light **tier 1.5** sits between tier 1 and tier 2: `MDBValue`, `MDBArg`,
-and the [`MDBValueIO`](@ref LMDB.MDBValueIO) extension point — an `IO`
-view over `MDB_val` that lets custom value representations plug into
-all the typed reads via `Base.read(io, T)`.
+The C API also includes `MDBValue`, `MDBArg`, and the
+[`MDBValueIO`](@ref LMDB.MDBValueIO) extension point — an `IO` view
+over `MDB_val` that lets custom value representations plug into all the
+typed reads via `Base.read(io, T)`.
 
 The Usage section is organised in increasing order of complexity: start
 with [Essentials](@ref) for a working example, then [Dictionary

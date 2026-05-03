@@ -44,8 +44,7 @@ env's finalizer cascades through any open DBI handles.
 
 ## Reads
 
-Every read takes a value-type parameter `T`. The default tier-2 forms
-are:
+Every read takes a value-type parameter `T`. The default forms are:
 
 ```julia
 get(txn, dbi, key, T)               # throws LMDBError(MDB_NOTFOUND) on miss

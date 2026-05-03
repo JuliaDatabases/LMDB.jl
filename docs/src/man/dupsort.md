@@ -89,7 +89,7 @@ the rest of the dups intact.
 - `MDB_DUPSORT | MDB_DUPFIXED`: every duplicate has the same byte
   size; LMDB stores them as a packed array per key. Required for the
   `MDB_GET_MULTIPLE` / `MDB_NEXT_MULTIPLE` cursor ops (reachable from
-  the tier-1 surface).
+  the C API).
 - `MDB_DUPSORT | MDB_DUPFIXED | MDB_INTEGERDUP`: values are
   native-endian integers; sorted numerically.
 - `MDB_DUPSORT | MDB_REVERSEDUP`: values compared back-to-front.

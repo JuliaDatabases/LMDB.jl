@@ -42,45 +42,43 @@ default `DBI`. Type conversions happen automatically — anything the
 `MDBValue` constructor accepts (`String`, `Vector{T}` of bitstype `T`,
 or any bitstype scalar) can be stored.
 
-## The three tiers
+## The three layers
 
 LMDB.jl is organised in layers. The same database can be accessed at any
 of them, depending on what you need:
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  Tier 3 — LMDBDict <: AbstractDict{K,V}                          │
+│  High-level abstractions — LMDBDict <: AbstractDict{K,V}         │
 │           "I want a persistent Dict."                            │
 ├──────────────────────────────────────────────────────────────────┤
-│  Tier 2 — Environment, Transaction, DBI, Cursor                  │
+│  Julia API — Environment, Transaction, DBI, Cursor               │
 │           Julian wrappers with finalizers and parent refs.       │
 │           The recommended surface for most code.                 │
 ├──────────────────────────────────────────────────────────────────┤
-│  Tier 1.5 — MDBValue, MDBArg, MDBValueIO                         │
-│           cconvert/unsafe_convert glue between Julia values      │
-│           and `Ptr{MDB_val}` arguments, and an `IO` view over    │
-│           `MDB_val` for typed reads via `Base.read(io, T)`.      │
-├──────────────────────────────────────────────────────────────────┤
-│  Tier 1 — mdb_*, MDB_*, unchecked_mdb_*                          │
+│  C API — mdb_*, MDB_*, unchecked_mdb_*                           │
 │           @ccall bindings; status-returning ones auto-throw      │
-│           and have `unchecked_*` companions.                     │
+│           and have `unchecked_*` companions. `MDBValue`,         │
+│           `MDBArg`, and `MDBValueIO` glue Julia values to        │
+│           `Ptr{MDB_val}` and let custom decoders plug in via     │
+│           `Base.read(io, T)`.                                    │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 The recommended progression is:
 
-1. Start with [Dictionary interface](@ref) (tier 3) until you need
+1. Start with the [Dictionary interface](@ref) until you need
    transactional grouping or zero-copy reads.
 2. Drop to [Environments](@ref) → [Transactions](@ref) →
-   [Databases](@ref) → [Cursors](@ref) (tier 2) for explicit lifetimes
+   [Databases](@ref) → [Cursors](@ref) for explicit lifetimes
    and fine-grained control.
-3. Reach for [Low-level bindings](@ref) (tier 1) only when integrating
+3. Reach for the [Low-level bindings](@ref) only when integrating
    with a custom data layout or when the wrappers introduce overhead
    you can't afford.
 
 ## Resource lifecycle
 
-Each tier-2 handle type wraps a raw LMDB pointer in a `mutable struct`
+Each Julia-API handle type wraps a raw LMDB pointer in a `mutable struct`
 with a finalizer:
 
 | handle | finalizer | parent ref |

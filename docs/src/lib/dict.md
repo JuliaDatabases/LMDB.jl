@@ -1,6 +1,6 @@
 # [Dictionary interface](@id API-Dict)
 
-The tier-3 surface: a single `AbstractDict{K,V}` over an LMDB environment.
+The high-level abstraction: a single `AbstractDict{K,V}` over an LMDB environment.
 
 ```@meta
 CurrentModule = LMDB

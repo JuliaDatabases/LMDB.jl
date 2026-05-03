@@ -328,7 +328,7 @@ end
     walk(f, cur::Cursor, ::Type{K}, ::Type{V}=K; from = nothing)
 
 Typed overload of `walk` mirroring the `tryget(txn, dbi, key, T)` /
-`key(cur, T)` / `seek!(cur, key, T)` shape used elsewhere in tier-2.
+`key(cur, T)` / `seek!(cur, key, T)` shape used elsewhere in the Julia API.
 Decodes each key and value through `read(::MDBValueIO, K)` /
 `read(::MDBValueIO, V)` before passing them to `f(k::K, v::V)`. Same
 stop contract as the raw form: `f` returning `false` halts iteration.

@@ -4,11 +4,11 @@
 CurrentModule = LMDB
 ```
 
-The tier-1 surface is the raw `ccall` interface to `liblmdb`. It is
+The C API is the raw `ccall` interface to `liblmdb`. It is
 public-but-unexported: refer to it as `LMDB.mdb_env_create`,
 `LMDB.MDB_NOTLS`, `LMDB.MDB_val`. Use this layer when you need to
 integrate with a custom data layout, branch on a status code that the
-tier-2 wrappers don't surface, or skip allocations on a hot path.
+Julia API doesn't surface, or skip allocations on a hot path.
 
 For the full inventory, see [the API reference](@ref API-LowLevel). What
 follows is a tour of how the layer is shaped.
@@ -64,7 +64,7 @@ env = env_ref[]
 LMDB.mdb_env_set_mapsize(env, Csize_t(1 << 30))
 LMDB.mdb_env_open(env, "/tmp/mydb",
                   LMDB.MDB_NOTLS | LMDB.MDB_NORDAHEAD,
-                  Cushort(0o644))
+                  LMDB.mode_t(0o644))
 
 txn_ref = Ref{Ptr{LMDB.MDB_txn}}()
 LMDB.mdb_txn_begin(env, C_NULL, Cuint(0), txn_ref)
@@ -115,10 +115,10 @@ Base.read(io::IO, ::Type{T}) = read!(io, Ref{T}())[]
 ```
 
 This is the analogue of heed's `BytesDecode<'txn>` trait. Every typed
-read in tier 2 — `tryget`, `get`, `key`, `value`, `item`, typed `walk`,
-`pop!`, `replace!` — funnels through `read(::MDBValueIO, T)`, so a
-single method opt-in is enough to make a custom representation usable
-across the package. Because `MDBValueIO <: IO`, all the standard
+read in the Julia API — `tryget`, `get`, `key`, `value`, `item`, typed
+`walk`, `pop!`, `replace!` — funnels through `read(::MDBValueIO, T)`,
+so a single method opt-in is enough to make a custom representation
+usable across the package. Because `MDBValueIO <: IO`, all the standard
 `Base` IO primitives (`position`, `seek`, `skip`, `read(io)`,
 `read(io, n::Integer)`, `read!(io, A)`, `bytesavailable`, `eof`) work
 out of the box, which makes structured framed-value decoders read
@@ -138,8 +138,8 @@ exactly like any other Julia parser.
 
 ## Unwrapped LMDB features
 
-A few LMDB features are reachable only through tier 1 because the
-tier-2 surface deliberately doesn't include them:
+A few LMDB features are reachable only through the C API because the
+Julia API deliberately doesn't include them:
 
 - **Custom comparators.** `LMDB.mdb_set_compare` /
   `LMDB.mdb_set_dupsort` accept a `MDB_cmp_func` callback. Use

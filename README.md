@@ -1,9 +1,9 @@
 # LMDB.jl
 
-Julia bindings for [LMDB](http://www.lmdb.tech/doc/), the
-Lightning Memory-Mapped Database — an embedded, memory-mapped, ACID
-key-value store developed by Symas for OpenLDAP. It is small, fast, and
-persists to disk while reading at near in-memory speeds.
+Julia bindings for [LMDB](http://www.lmdb.tech/doc/), the Lightning
+Memory-Mapped Database — an embedded, memory-mapped, ACID key-value
+store developed by Symas for OpenLDAP. Small, fast, persisted to disk,
+and reads at near in-memory speeds.
 
 ```julia
 using Pkg; Pkg.add("LMDB")
@@ -11,25 +11,26 @@ using Pkg; Pkg.add("LMDB")
 
 ## Three layers
 
-LMDB.jl exposes three tiers, each with a clear consumer:
+LMDB.jl exposes the same database through three layers, each with a
+clear consumer:
 
-```
-Tier 3  LMDBDict           — `AbstractDict` over a single LMDB file.
-Tier 2  Environment, …     — Julian wrappers: handles, txns, cursors, dicts.
-Tier 1  mdb_*, MDB_*       — raw bindings + status-code constants.
-```
+- **High-level abstractions** — `LMDBDict <: AbstractDict`, an
+  `AbstractDict{K,V}` over a single LMDB file. Standard library
+  machinery (`merge!`, `filter!`, `pairs`, iteration, …) works out
+  of the box. Reach for this when you want a persistent `Dict`.
+- **Julia API** — `Environment`, `Transaction`, `DBI`, `Cursor`. Julian
+  wrappers around handles, transactions, and cursors, with finalizers,
+  `do`-block forms, and typed reads through the
+  [`MDBValueIO`](https://en.wikipedia.org/wiki/Memory-mapped_file)
+  extension point. The recommended surface for most code that needs
+  explicit transactions.
+- **C API** — `LMDB.mdb_*` and `LMDB.MDB_*`. Raw `ccall` bindings and
+  status-code constants. Status-returning functions auto-throw
+  `LMDBError` on a non-zero return; an `unchecked_*` companion is
+  available where the caller needs to inspect the raw status (for
+  example, branching on `MDB_NOTFOUND`).
 
-Tier 3 is the easy mode. Tier 2 is what most users want. Tier 1 is for
-power users who need to integrate with custom data layouts or skip
-allocations on hot paths — its functions auto-throw on non-zero status,
-and an `unchecked_*` companion is available for callers that need to
-inspect the raw status code.
-
-### Tier 3 — `LMDBDict`
-
-`LMDBDict{K,V} <: AbstractDict{K,V}`, so the standard library does most
-of the work — `merge!`, `filter!`, `pairs`, `==`, `hash`, `keys`,
-`values`, lazy iteration — all come for free:
+### High-level abstractions — `LMDBDict`
 
 ```julia
 using LMDB
@@ -50,10 +51,10 @@ close(d)
 ```
 
 Constructor kwargs: `mapsize`, `readers`, `dbs`, `readonly`, `rdahead`.
-The env is opened with `MDB_NOTLS` so multiple read txns can coexist on
-one thread — needed for interleaved reads or task-parallel access.
+The env is opened with `MDB_NOTLS` so multiple read txns can coexist
+on a single thread.
 
-### Tier 2 — explicit env / txn / cursor
+### Julia API — explicit env / txn / cursor
 
 ```julia
 using LMDB
@@ -66,18 +67,18 @@ try
             put!(txn, dbi, "k1", "hello")
             put!(txn, dbi, "k2", [1.0, 2.0, 3.0])
 
-            @show LMDB.tryget(txn, dbi, "k1", String)    # "hello"
+            @show LMDB.tryget(txn, dbi, "k1", String)
             @show LMDB.get(txn, dbi, "missing", String, "default")
-            @show LMDB.stat(txn, dbi).ms_entries         # 2
+            @show LMDB.stat(txn, dbi).entries
         end
     end
 
-    # Cursor walk: zero-copy access to raw MDB_val refs.
+    # Cursor walk over the LMDB-owned mmap (zero-copy access).
     start(env; flags = MDB_RDONLY) do txn
         open(txn) do dbi
             open(txn, dbi) do cur
-                LMDB.walk(cur) do k_ref, v_ref
-                    println(LMDB.mbd_unpack(String, k_ref))
+                LMDB.walk(cur, String, String) do k, v
+                    println(k, " => ", v)
                 end
             end
         end
@@ -87,20 +88,25 @@ finally
 end
 ```
 
-Status-code matchers are in `LMDBError`:
+The package decodes `String`, `Vector{T}` for any bitstype `T`, and
+the primitive numeric types out of the box. To plug in a custom
+representation, define a single `Base.read(io::IO, ::Type{T})` method;
+it will be picked up by `tryget` / `get` / `walk(f, cur, K, V)` and
+the cursor accessors `key`/`value`/`item`. Status-code matchers live
+on `LMDBError`:
 
 ```julia
 try
     LMDB.get(txn, dbi, "missing", String)
 catch e
     e isa LMDBError && LMDB.is_notfound(e) || rethrow()
-    # …
+    # treat as missing
 end
 ```
 
-### Tier 1 — raw bindings
+### C API — raw bindings
 
-The bindings are `LMDB.mdb_*`; constants like `LMDB.MDB_NOTLS`,
+The bindings are `LMDB.mdb_*`; constants like `LMDB.MDB_NOTLS` and
 `LMDB.MDB_NOTFOUND` are public-but-unexported. Status-returning
 bindings have an auto-throwing default and an `unchecked_*` companion:
 
@@ -114,7 +120,7 @@ LMDB.mdb_env_set_maxreaders(env, Cuint(510))
 LMDB.mdb_env_set_mapsize(env, Csize_t(1 << 30))
 LMDB.mdb_env_open(env, "/tmp/mydb",
                   LMDB.MDB_NOTLS | LMDB.MDB_NORDAHEAD,
-                  Cushort(0o644))
+                  LMDB.mode_t(0o644))
 
 # Inspect the raw status code (e.g. for MDB_NOTFOUND):
 ret = LMDB.unchecked_mdb_get(txn, dbi, key, val_ref)
@@ -126,4 +132,3 @@ ret == 0 || throw(LMDB.LMDBError(ret))
 
 - LMDB upstream: <https://github.com/LMDB/lmdb>
 - LMDB API docs: <http://www.lmdb.tech/doc/>
-- Julia LMDB.jl issues / PRs: this repository.

@@ -46,15 +46,15 @@ The rest (`MDB_PAGE_NOTFOUND`, `MDB_CORRUPTED`, `MDB_PANIC`,
 `MDB_MAP_RESIZED`, `MDB_INCOMPATIBLE`, `MDB_BAD_RSLOT`, `MDB_BAD_TXN`,
 `MDB_BAD_VALSIZE`, `MDB_BAD_DBI`) live under the `LMDB.` prefix.
 
-## Where errors come from at each tier
+## Where errors come from at each layer
 
-- **Tier 1.** Bindings wrapped by `@checked` auto-throw `LMDBError`;
+- **C API.** Bindings wrapped by `@checked` auto-throw `LMDBError`;
   the `unchecked_*` companion returns the raw `Cint` so the caller can
   branch on `MDB_NOTFOUND`/`MDB_KEYEXIST`/etc.
-- **Tier 2.** Handle methods that wrap status-returning bindings let
+- **Julia API.** Handle methods that wrap status-returning bindings let
   `LMDBError` propagate. `tryget` and `get(..., default)` swallow
   `MDB_NOTFOUND` and return `nothing`/`default`. `delete!(txn, dbi, key)`
   likewise swallows `MDB_NOTFOUND` and returns `false`.
-- **Tier 3.** Missing keys produce `KeyError` (matching `Base.Dict`).
-  `pop!(d)` on an empty dict throws `ArgumentError`. Other LMDB errors
-  propagate as `LMDBError`.
+- **High-level abstractions.** Missing keys produce `KeyError`
+  (matching `Base.Dict`). `pop!(d)` on an empty dict throws
+  `ArgumentError`. Other LMDB errors propagate as `LMDBError`.

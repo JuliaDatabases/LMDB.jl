@@ -132,7 +132,7 @@ audits without `stat`.
 
 ## When to drop down
 
-Reach for the explicit tier-2 surface (next chapters) when:
+Reach for the explicit Julia API (next chapters) when:
 
 - you need **multi-key atomicity**: a single transaction grouping more
   than one `put!`/`delete!`,

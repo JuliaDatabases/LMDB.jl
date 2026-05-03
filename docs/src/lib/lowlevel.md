@@ -4,7 +4,7 @@
 CurrentModule = LMDB
 ```
 
-The tier-1 surface is a flat namespace of `ccall` bindings (`LMDB.mdb_*`),
+The C API is a flat namespace of `ccall` bindings (`LMDB.mdb_*`),
 opaque handle types (`LMDB.MDB_env`, `LMDB.MDB_txn`, `LMDB.MDB_cursor`),
 plain structs (`LMDB.MDB_val`, `LMDB.MDB_stat`, `LMDB.MDB_envinfo`), the
 cursor-op `@cenum` (`LMDB.MDB_cursor_op`), and `LMDB.MDB_*` flag/status

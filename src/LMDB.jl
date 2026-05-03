@@ -23,25 +23,25 @@ export
     # commonly-needed write flags
     MDB_NOOVERWRITE, MDB_NODUPDATA, MDB_APPEND, MDB_RESERVE,
 
-    # tier 2 — environment
+    # Julia API — environment
     Environment, create, environment,
     sync, set!, unset!, info, stat, path, isopen, isflagset,
     reader_check, reader_list,
 
-    # tier 2 — transaction
+    # Julia API — transaction
     Transaction, start, abort, commit, reset, renew,
 
-    # tier 2 — database (DBI)
-    DBI, drop, get, put!, delete!, tryget, replace!,
+    # Julia API — database (DBI)
+    DBI, drop, get, put!, put_reserved!, delete!, tryget, replace!,
 
-    # tier 2 — cursor
+    # Julia API — cursor
     Cursor, count, transaction, database,
     seek!, seek_last!, seek_range!, next!, prev!,
     key, value, item, walk,
     seek_first_dup!, seek_last_dup!,
     next_dup!, prev_dup!, next_nodup!, prev_nodup!,
 
-    # tier 3
+    # High-level abstractions
     LMDBDict
 
 # ---------------------------------------------------------------------------
@@ -100,15 +100,15 @@ done after `close(env)` without rewriting the database).
 is_map_full
 
 # ---------------------------------------------------------------------------
-# Tier 1 — raw bindings, types, constants. Public-but-unexported.
+# C API — raw bindings, types, constants. Public-but-unexported.
 #
 # Every status-returning binding has a `@checked` wrapper (auto-throws) and an
 # `unchecked_*` companion (returns the raw `Cint` for callers that need to
 # inspect it, e.g. branching on `MDB_NOTFOUND`).
 #
 # Use as `LMDB.mdb_env_create`, `LMDB.MDB_NOTLS`, `LMDB.MDB_val`. Mostly
-# relevant to power users; tier 2 (`Environment`, `Transaction`, …) is the
-# recommended surface.
+# relevant to power users; the Julia API (`Environment`, `Transaction`, …) is
+# the recommended surface.
 # ---------------------------------------------------------------------------
 
 include("checked.jl")
@@ -123,13 +123,15 @@ is_keyexist(err::LMDBError) = err.code == MDB_KEYEXIST
 is_map_full(err::LMDBError) = err.code == MDB_MAP_FULL
 
 # ---------------------------------------------------------------------------
-# Tier 1.5 — ccall glue.
+# ccall glue between the C API and the Julia API: `MDBValue`, `MDBArg`, and
+# the `MDBValueIO <: IO` extension point used to plug in custom decoders via
+# `Base.read(io, T)`.
 # ---------------------------------------------------------------------------
 
 include("common.jl")
 
 # ---------------------------------------------------------------------------
-# Tier 2 — Julian wrappers around the raw bindings.
+# Julia API — Julian wrappers around the raw bindings.
 # ---------------------------------------------------------------------------
 
 include("env.jl")
@@ -138,7 +140,7 @@ include("dbi.jl")
 include("cur.jl")
 
 # ---------------------------------------------------------------------------
-# Tier 3 — high-level convenience.
+# High-level abstractions — `LMDBDict`.
 # ---------------------------------------------------------------------------
 
 include("dicts.jl")

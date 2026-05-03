@@ -26,8 +26,8 @@ end
 @testset "Integration" begin
 
 # Power-user pattern: open an env via the Environment kwargs ctor, run
-# a write txn through tier-2, then a read txn through a cursor walk
-# using only tier-2 + raw MDB_val refs (the shape cuTile.DiskCache
+# a write txn through the Julia API, then a read txn through a cursor walk
+# using only the Julia API + raw MDB_val refs (the shape cuTile.DiskCache
 # follows). Regression guard: ensures no future change breaks the
 # `walk(...) do k_ref, v_ref` zero-copy idiom.
 mktempdir() do dir
@@ -49,7 +49,7 @@ mktempdir() do dir
             end
         end
 
-        # Tier-2 read txn + cursor walk over the LMDB-owned mmap, like
+        # Julia-API read txn + cursor walk over the LMDB-owned mmap, like
         # cuTile's eviction scan: zero allocations beyond the per-entry
         # tuple.
         entries = Tuple{String, Int}[]
