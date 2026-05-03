@@ -40,6 +40,12 @@ end
 "Close a cursor. Idempotent."
 function close(cur::Cursor)
     cur.handle == C_NULL && return
+    # Per `lmdb.h`, write-txn cursors are freed by the parent txn's
+    # commit/abort and `mdb_cursor_close` afterwards is undefined; for
+    # read-txn cursors, the txn handle is required to still be valid.
+    # If the parent txn is already finalised in the wrapper, drop the
+    # handle without calling into LMDB.
+    isopen(cur.txn) || (cur.handle = C_NULL; return)
     mdb_cursor_close(cur)
     cur.handle = C_NULL
     return
