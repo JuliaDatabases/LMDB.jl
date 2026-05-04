@@ -37,6 +37,13 @@ Base.cconvert(::Type{Ptr{MDB_val}}, x::Base.RefValue{MDB_val}) = x
 # User input — heap-rooted forms with stable data pointers.
 Base.cconvert(::Type{Ptr{MDB_val}}, x::String)        = MDBArg(Ref(MDBValue(x)), x)
 Base.cconvert(::Type{Ptr{MDB_val}}, x::Array)         = MDBArg(Ref(MDBValue(x)), x)
+# Other AbstractArrays that support `unsafe_convert(Ptr{T}, x)` flow through —
+# contiguous `SubArray`, `ReinterpretArray`, etc. Non-contiguous inputs
+# surface the standard "cannot take pointer" error from `unsafe_convert`.
+# Matches the scope of `MDBValue(::AbstractArray)` above. The `Array`
+# method above stays as a more-specific overload to break the ambiguity
+# with `Base.cconvert(::Type{<:Ptr}, ::Array)`.
+Base.cconvert(::Type{Ptr{MDB_val}}, x::AbstractArray) = MDBArg(Ref(MDBValue(x)), x)
 Base.cconvert(::Type{Ptr{MDB_val}}, x::Base.RefValue) = MDBArg(Ref(MDBValue(x)), x)
 # User input — bare bitstype scalar. Wrap in a `Ref` to give it a heap
 # address, then build the `MDBArg`. The `Ref` lives in `MDBArg.data` and
