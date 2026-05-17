@@ -68,8 +68,12 @@ Idempotent.
 """
 function commit(txn::Transaction)
     txn.handle == C_NULL && return
-    mdb_txn_commit(txn)
+    # mdb_txn_commit frees the txn handle whether it returns success or an
+    # error (per lmdb.h). Null the wrapper out *before* the checked call can
+    # throw, otherwise the finalizer would re-abort an already-freed pointer.
+    ret = unchecked_mdb_txn_commit(txn)
     txn.handle = C_NULL
+    check(ret)
     return
 end
 
