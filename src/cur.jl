@@ -25,11 +25,9 @@ function open(f::Function, txn::Transaction, dbi::DBI)
     end
 end
 
-"Close a cursor"
+"Close a cursor. Idempotent."
 function close(cur::Cursor)
-    if cur.handle == C_NULL
-        @warn("Cursor is already closed")
-    end
+    cur.handle == C_NULL && return
     _mdb_cursor_close(cur.handle)
     cur.handle = C_NULL
     return

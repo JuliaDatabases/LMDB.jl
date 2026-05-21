@@ -28,11 +28,10 @@ function open(f::Function, txn::Transaction, dbname::String = ""; flags::Cuint =
     end
 end
 
-"Close a database handle"
+"Close a database handle. Idempotent on both env and dbi."
 function close(env::Environment, dbi::DBI)
-    if !isopen(env)
-        @warn("Environment is closed")
-    end
+    isopen(env) || return
+    isopen(dbi) || return
     _mdb_dbi_close(env.handle, dbi.handle)
     dbi.handle = zero(Cuint)
     return

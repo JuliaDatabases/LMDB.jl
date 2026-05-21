@@ -57,11 +57,14 @@ function environment(f::Function, path::String; flags::Cuint=zero(Cuint), mode::
     end
 end
 
-"""Close the environment and release the memory map"""
+"""Close the environment and release the memory map.
+
+Idempotent: calling `close` on an already-closed `Environment` is a
+silent no-op, matching the convention of `close(::IO)`. This makes
+finalizers safe to run after an explicit close.
+"""
 function close(env::Environment)
-    if env.handle == C_NULL
-        throw(LMDBError(-1,"Environment is already closed"))
-    end
+    env.handle == C_NULL && return zero(Cint)
     _mdb_env_close(env.handle)
     env.handle = C_NULL
     env.path = ""
