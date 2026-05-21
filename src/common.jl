@@ -1,58 +1,75 @@
 const EnvironmentFlags = Unsigned
 
-# Build an `MDB_val` (size + raw data pointer) from a heap-rooted Julia value.
-# The pointer is taken via `Base.unsafe_convert` — the same primitive ccall
-# uses internally to lower `Ref{T}`/`Vector{T}`/`String` arguments. The caller
-# is responsible for keeping `val` alive across the ccall (via `GC.@preserve`),
-# since the resulting `MDB_val` is opaque to GC.
+# Zero-valued `MDB_val` sentinels — used as out-parameters and for the
+# "no value" form of `delete!`. Constructing a non-empty `MDB_val` from a
+# Julia value requires taking a raw pointer into that value, which is only
+# safe when the value is GC-preserved across the eventual ccall. We keep
+# that pointer extraction confined to `unsafe_convert(::Ptr{MDB_val}, ::MDBArg)`
+# below, where ccall's automatic preservation covers the carrier.
 MDBValue() = MDB_val(zero(Csize_t), C_NULL)
 MDBValue(::Nothing) = MDBValue()
-MDBValue(val::String) =
-    MDB_val(Csize_t(sizeof(val)),
-            Ptr{Cvoid}(Base.unsafe_convert(Ptr{UInt8}, val)))
-MDBValue(val::AbstractArray{T}) where {T} =
-    MDB_val(Csize_t(sizeof(T) * length(val)),
-            Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, val)))
-MDBValue(val::Base.RefValue{T}) where {T} =
-    MDB_val(Csize_t(sizeof(T)),
-            Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, val)))
 
-# Self-rooted argument for `Ptr{MDB_val}` ccall sites: holds the
-# `Ref{MDB_val}` box and a reference to the data buffer the box's `mv_data`
-# field aliases. Returned from `cconvert` below so ccall's automatic
-# `GC.@preserve` covers both the box and the data — callers never need
-# explicit `Ref(...)`, `MDBValue(...)`, or `GC.@preserve` for input args.
+# Self-rooted argument for `Ptr{MDB_val}` ccall sites. `box` is an
+# uninitialized `Ref{MDB_val}`; `data` is the Julia-owned buffer whose
+# pointer the C call needs to see. `cconvert` returns an `MDBArg`, ccall
+# preserves it across the call, and `unsafe_convert` (below) is the one
+# place pointer extraction happens — that means `data` is provably alive
+# at the moment its pointer is taken.
 struct MDBArg{D}
     box::Base.RefValue{MDB_val}
     data::D
+    MDBArg(data::D) where {D} = new{D}(Ref{MDB_val}(), data)
 end
-Base.unsafe_convert(::Type{Ptr{MDB_val}}, m::MDBArg) =
-    Base.unsafe_convert(Ptr{MDB_val}, m.box)
+
+# Lazy pointer extraction. Runs while ccall is preserving `m`; therefore
+# `m.data` is alive at the point we ask it for a pointer, satisfying the
+# Julia GC contract for `Base.unsafe_convert`.
+@inline function Base.unsafe_convert(::Type{Ptr{MDB_val}}, m::MDBArg{String})
+    m.box[] = MDB_val(Csize_t(sizeof(m.data)),
+                       Ptr{Cvoid}(Base.unsafe_convert(Ptr{UInt8}, m.data)))
+    return Base.unsafe_convert(Ptr{MDB_val}, m.box)
+end
+@inline function Base.unsafe_convert(::Type{Ptr{MDB_val}}, m::MDBArg{<:AbstractArray{T}}) where {T}
+    m.box[] = MDB_val(Csize_t(sizeof(T) * length(m.data)),
+                       Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, m.data)))
+    return Base.unsafe_convert(Ptr{MDB_val}, m.box)
+end
+@inline function Base.unsafe_convert(::Type{Ptr{MDB_val}}, m::MDBArg{<:Base.RefValue{T}}) where {T}
+    m.box[] = MDB_val(Csize_t(sizeof(T)),
+                       Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, m.data)))
+    return Base.unsafe_convert(Ptr{MDB_val}, m.box)
+end
 
 # Bare `MDB_val` (used for `delete!`'s empty val): heap-box it.
 Base.cconvert(::Type{Ptr{MDB_val}}, x::MDB_val) = Ref(x)
-# Pre-built `Ref{MDB_val}` (used by iterator state, and as the out-param
-# for `get`/`mdb_cursor_get`): ccall reads/writes the box directly.
+# Pre-built `Ref{MDB_val}` (iterator state, `get` out-param): passthrough;
+# ccall reads/writes the box directly.
 Base.cconvert(::Type{Ptr{MDB_val}}, x::Base.RefValue{MDB_val}) = x
-# User input — heap-rooted forms with stable data pointers.
-Base.cconvert(::Type{Ptr{MDB_val}}, x::String)        = MDBArg(Ref(MDBValue(x)), x)
-Base.cconvert(::Type{Ptr{MDB_val}}, x::Array)         = MDBArg(Ref(MDBValue(x)), x)
+# User input — package the data, defer pointer extraction.
+Base.cconvert(::Type{Ptr{MDB_val}}, x::String)        = MDBArg(x)
+Base.cconvert(::Type{Ptr{MDB_val}}, x::Array)         = MDBArg(x)
 # Other AbstractArrays that support `unsafe_convert(Ptr{T}, x)` flow through —
 # contiguous `SubArray`, `ReinterpretArray`, etc. Non-contiguous inputs
 # surface the standard "cannot take pointer" error from `unsafe_convert`.
-# Matches the scope of `MDBValue(::AbstractArray)` above. The `Array`
-# method above stays as a more-specific overload to break the ambiguity
-# with `Base.cconvert(::Type{<:Ptr}, ::Array)`.
-Base.cconvert(::Type{Ptr{MDB_val}}, x::AbstractArray) = MDBArg(Ref(MDBValue(x)), x)
-Base.cconvert(::Type{Ptr{MDB_val}}, x::Base.RefValue) = MDBArg(Ref(MDBValue(x)), x)
-# User input — bare bitstype scalar. Wrap in a `Ref` to give it a heap
-# address, then build the `MDBArg`. The `Ref` lives in `MDBArg.data` and
-# is rooted by ccall's preserve.
+# The `Array` method above stays as a more-specific overload to break the
+# ambiguity with `Base.cconvert(::Type{<:Ptr}, ::Array)`.
+Base.cconvert(::Type{Ptr{MDB_val}}, x::AbstractArray) = MDBArg(x)
+Base.cconvert(::Type{Ptr{MDB_val}}, x::Base.RefValue) = MDBArg(x)
+# Bare bitstype scalar: heap-box via `Ref` so it has a stable address.
 function Base.cconvert(::Type{Ptr{MDB_val}}, x::T) where {T}
     isbitstype(T) || throw(MethodError(Base.cconvert, (Ptr{MDB_val}, x)))
-    rx = Ref(x)
-    MDBArg(Ref(MDBValue(rx)), rx)
+    MDBArg(Ref(x))
 end
+
+# Private: build an `MDB_val` whose `mv_data` aliases `buf`. The pointer
+# is taken via `unsafe_convert`; the caller MUST keep `buf` alive across
+# any ccall that reads the resulting `MDB_val` (in practice, by wrapping
+# the call site in `GC.@preserve buf ...`). Used by the cursor iterator,
+# which already threads its key buffer through the iteration state for
+# exactly this reason.
+@inline _mdb_val_for(buf::Vector{T}) where {T} =
+    MDB_val(Csize_t(sizeof(T) * length(buf)),
+            Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, buf)))
 
 mbd_unpack(::Type{T}, mdb_val_ref::Ref{MDB_val}) where {T} = _mbd_unpack(T, mdb_val_ref[])
 function _mbd_unpack(::Type{T}, mdb_val::MDB_val) where {T <: String}

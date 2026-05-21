@@ -82,22 +82,24 @@ struct ReturnValueSize end
 
 arcopy(x::Array) = copy(x)
 arcopy(x) = x
-# process_returns returns (retval, next_op, key_buf). key_buf is whatever the
-# iterator wrote into mdb_key_ref via mdb_key_ref[] = MDBValue(buf); it must
-# be GC-preserved across the next mdb_cursor_get call. Variants that don't
-# rewrite the key return `nothing` for key_buf.
+# process_returns returns (retval, next_op, key_buf). key_buf is the Julia
+# buffer the next iteration will fill `mdb_key_ref` from; it must outlive
+# the next mdb_cursor_get call. Variants that don't seed a SET_RANGE
+# return `nothing` for key_buf.
 process_returns(::ReturnKeys{K}, mdb_key_ref, _) where K = arcopy(mbd_unpack(K, mdb_key_ref)), MDB_NEXT, nothing
 process_returns(::ReturnValues{V}, _, mdb_val_ref) where V = arcopy(mbd_unpack(V, mdb_val_ref)), MDB_NEXT, nothing
 process_returns(::ReturnBoth{K,V}, mdb_key_ref, mdb_val_ref) where {K,V} = arcopy((mbd_unpack(K, mdb_key_ref)) => arcopy(mbd_unpack(V, mdb_val_ref))), MDB_NEXT, nothing
 process_returns(::ReturnValueSize, _, mdb_val_ref) = mdb_val_ref[].mv_size, MDB_NEXT, nothing
 function init_values(d::LMDBIterator)
-    k, op, key_buf = if !isempty(d.prefix)
-        Ref(MDBValue(d.prefix)), MDB_SET_RANGE, d.prefix
+    if !isempty(d.prefix)
+        # The Ref is initialised lazily inside `iterate`, under
+        # `GC.@preserve key_buf`, so the pointer into `d.prefix` is
+        # only taken when the buffer is provably alive.
+        k = Ref(MDBValue())
+        return k, Ref(MDBValue()), MDB_SET_RANGE, d.prefix
     else
-        Ref(MDBValue()), MDB_FIRST, nothing
+        return Ref(MDBValue()), Ref(MDBValue()), MDB_FIRST, nothing
     end
-    v = Ref(MDBValue())
-    return k, v, op, key_buf
 end
 
 Base.iterate(iter::LMDBIterator) = Base.iterate(iter, init_values(iter))
@@ -106,10 +108,15 @@ Base.iterate(iter::LMDBIterator) = Base.iterate(iter, init_values(iter))
 function Base.iterate(iter::LMDBIterator, refs)
     mdb_key_ref, mdb_val_ref, cursor_op, key_buf = refs
 
-    # key_buf may be aliased by mdb_key_ref (e.g. DirectoryLister or
-    # SET_RANGE seed) and must outlive the C call. unchecked_* because the
-    # iterator branches on MDB_NOTFOUND itself.
-    ret = GC.@preserve key_buf unchecked_mdb_cursor_get(iter.cur, mdb_key_ref, mdb_val_ref, cursor_op)
+    # If we have a key buffer (SET_RANGE seed or DirectoryLister rewrite),
+    # fill `mdb_key_ref` with its pointer under GC.@preserve — the pointer
+    # is only valid while `key_buf` is rooted, and ccall extends that
+    # rooting through the call. unchecked_* because the iterator branches
+    # on MDB_NOTFOUND itself.
+    ret = GC.@preserve key_buf begin
+        key_buf === nothing || (mdb_key_ref[] = _mdb_val_for(key_buf))
+        unchecked_mdb_cursor_get(iter.cur, mdb_key_ref, mdb_val_ref, cursor_op)
+    end
 
     if ret == 0
         #Check if we are still in key prefix
@@ -146,11 +153,16 @@ function process_returns(l::DirectoryLister{K}, mdb_key_ref, _) where K
     else
         k = copy(k)
         resize!(k,nextsep)
-        kout = arcopy(mbd_unpack(K, Ref(MDBValue(k))))
+        # Decode `k` under GC.@preserve — `_mdb_val_for(k)` takes a raw
+        # pointer into `k` that must outlive the `mbd_unpack` read.
+        local kout
+        GC.@preserve k begin
+            kref = Ref(_mdb_val_for(k))
+            kout = arcopy(mbd_unpack(K, kref))
+        end
         k[end] = k[end]+1
-        mdb_key_ref[] = MDBValue(k)
-        # Return k so the next iterate() can GC.@preserve it across the
-        # MDB_SET_RANGE call that reads through mdb_key_ref.
+        # Return `k` as the next iteration's key_buf; `iterate` will
+        # fill `mdb_key_ref` from it under its own GC.@preserve.
         return kout, MDB_SET_RANGE, k
     end
 end
