@@ -1,0 +1,22 @@
+[general]
+library_name = "liblmdb"
+output_file_path = "../src/liblmdb.jl"
+jll_pkg_name = "LMDB_jll"
+
+output_ignorelist = [
+    # function-like macros that don't translate to Julia
+    "MDB_VERINT",
+    "MDB_VERSTR",
+    "MDB_VERFOO",
+    "MDB_VERSION_FULL",
+    "MDB_VERSION_STRING",
+]
+
+[codegen]
+use_ccall_macro = true
+use_julia_bool = true
+always_NUL_terminated_string = true
+
+[codegen.macro]
+macro_mode = "basic"
+add_comment_for_skipped_macro = false

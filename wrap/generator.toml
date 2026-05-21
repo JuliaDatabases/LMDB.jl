@@ -1,6 +1,0 @@
-[general]
-library_name = "liblmdb"
-output_file_path = "../src/LibLMDB.jl"
-module_name = "LibLMDB"
-jll_pkg_name = "LMDB_jll"
-export_symbol_prefixes = ["mdb_","MDB_","_mdb_"]
