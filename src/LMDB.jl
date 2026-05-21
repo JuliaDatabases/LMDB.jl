@@ -3,43 +3,12 @@ module LMDB
 import Base: open, close, getindex, setindex!, put!, reset,
              isopen, count, delete!, keys, get, show
 
-export
-    # error type + matchers
-    LMDBError, is_notfound, is_keyexist, is_map_full,
-
-    # commonly-needed status codes
-    MDB_NOTFOUND, MDB_KEYEXIST, MDB_MAP_FULL,
-
-    # commonly-needed env flags
-    MDB_RDONLY, MDB_NOTLS, MDB_NORDAHEAD, MDB_NOSUBDIR,
-    MDB_NOSYNC, MDB_NOMETASYNC, MDB_WRITEMAP, MDB_NOMEMINIT,
-
-    # commonly-needed db flags
-    MDB_CREATE, MDB_DUPSORT, MDB_INTEGERKEY, MDB_REVERSEKEY,
-    MDB_DUPFIXED, MDB_INTEGERDUP, MDB_REVERSEDUP,
-
-    # commonly-needed write flags
-    MDB_NOOVERWRITE, MDB_NODUPDATA, MDB_APPEND, MDB_RESERVE,
-
-    # tier 2 — environment
-    Environment, create, environment,
-    sync, set!, unset!, info, path, isopen, isflagset,
-
-    # tier 2 — transaction
-    Transaction, start, abort, commit, reset, renew,
-
-    # tier 2 — database (DBI)
-    DBI, drop, get, put!, delete!, tryget, replace!,
-
-    # tier 2 — cursor
-    Cursor, count, transaction, database,
-    seek!, seek_last!, seek_range!, next!, prev!,
-    key, value, item, walk,
-    seek_first_dup!, seek_last_dup!,
-    next_dup!, prev_dup!, next_nodup!, prev_nodup!,
-
-    # tier 3
-    LMDBDict
+export Environment, create, open, close, sync, set!, unset!, getindex, setindex!, path, info, show,
+       Transaction, start, abort, commit, reset, renew, environment,
+       DBI, drop, delete!, keys, get, put!,
+       Cursor, count, transaction, database,
+       isflagset, isopen,
+       LMDBError, LMDBDict
 
 # ---------------------------------------------------------------------------
 # Error type. Defined here so the `@checked` macro can reference it; the
