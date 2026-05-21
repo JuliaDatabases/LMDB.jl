@@ -27,7 +27,9 @@ inspect the raw status code.
 
 ### Tier 3 — `LMDBDict`
 
-A persistent `Dict`-like object backed by one LMDB environment + DBI.
+`LMDBDict{K,V} <: AbstractDict{K,V}`, so the standard library does most
+of the work — `merge!`, `filter!`, `pairs`, `==`, `hash`, `keys`,
+`values`, lazy iteration — all come for free:
 
 ```julia
 using LMDB
@@ -37,13 +39,19 @@ d["beta/x"] = Float32[10, 11]
 d["beta/y"] = Float32[12, 13]
 
 @show d["alpha"]
-@show haskey(d, "alpha"), haskey(d, "missing")
-@show keys(d, prefix = "beta/")           # ["beta/x", "beta/y"]
-@show LMDB.list_dirs(d)                   # ["alpha", "beta/"]
+@show haskey(d, "alpha"), haskey(d, "missing")  # missing throws KeyError
+@show length(d)                                  # 3
+for (k, v) in d
+    @show k, v
+end
+@show LMDB.scan_keys(d, prefix = "beta/")       # ["beta/x", "beta/y"]
+@show LMDB.list_dirs(d)                         # ["alpha", "beta/"]
 close(d)
 ```
 
 Constructor kwargs: `mapsize`, `readers`, `dbs`, `readonly`, `rdahead`.
+The env is opened with `MDB_NOTLS` so multiple read txns can coexist on
+one thread — needed for interleaved reads or task-parallel access.
 
 ### Tier 2 — explicit env / txn / cursor
 
