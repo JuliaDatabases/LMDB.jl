@@ -6,6 +6,8 @@ mutable struct DBI
     name::String
 end
 
+Base.cconvert(::Type{MDB_dbi}, d::DBI) = d.handle
+
 "Check if database is open"
 isopen(dbi::DBI) = dbi.handle != zero(Cuint)
 
@@ -13,7 +15,7 @@ isopen(dbi::DBI) = dbi.handle != zero(Cuint)
 function open(txn::Transaction, dbname::String = ""; flags::Cuint = zero(Cuint))
     cdbname = length(dbname) > 0 ? dbname : Ptr{Cchar}(C_NULL)
     handle = Ref{MDB_dbi}()
-    check(mdb_dbi_open(txn.handle, cdbname, flags, handle))
+    mdb_dbi_open(txn, cdbname, flags, handle)
     return DBI(handle[], dbname)
 end
 
@@ -32,7 +34,7 @@ end
 function close(env::Environment, dbi::DBI)
     isopen(env) || return
     isopen(dbi) || return
-    mdb_dbi_close(env.handle, dbi.handle)
+    mdb_dbi_close(env, dbi)
     dbi.handle = zero(Cuint)
     return
 end
@@ -40,8 +42,14 @@ end
 "Retrieve the DB flags for a database handle"
 function flags(txn::Transaction, dbi::DBI)
     flags = Ref{Cuint}(0)
-    check(mdb_dbi_flags(txn.handle, dbi.handle, flags))
+    mdb_dbi_flags(txn, dbi, flags)
     return flags[]
+end
+
+function Base.show(io::IO, dbi::DBI)
+    print(io, "DBI(")
+    isempty(dbi.name) ? print(io, "<main>") : show(io, dbi.name)
+    print(io, ", ", isopen(dbi) ? "open" : "closed", ")")
 end
 
 """Empty or delete+close a database.
@@ -50,42 +58,23 @@ If parameter `delete` is `false` DB will be emptied, otherwise
 DB will be deleted from the environment and DB handle will be closed
 """
 function drop(txn::Transaction, dbi::DBI; delete = false)
-    del = Cint(delete)
-    check(mdb_drop(txn.handle, dbi.handle, del))
+    mdb_drop(txn, dbi, Cint(delete))
 end
-
-toref(v) = isbitstype(typeof(v)) ? [v] : v
-toref(v::Ptr{Nothing}) = v
 
 "Store items into a database"
 function put!(txn::Transaction, dbi::DBI, key, val; flags::Cuint = zero(Cuint))
-    rkey = toref(key)
-    rval = toref(val)
-    GC.@preserve rkey rval begin
-        mdb_key_ref = Ref(MDBValue(rkey))
-        mdb_val_ref = Ref(MDBValue(rval))
-        check(mdb_put(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref, flags))
-    end
+    mdb_put(txn, dbi, key, val, flags)
 end
 
 "Delete items from a database"
 function delete!(txn::Transaction, dbi::DBI, key, val=C_NULL)
-    rkey = toref(key)
-    rval = val === C_NULL ? nothing : toref(val)
-    GC.@preserve rkey rval begin
-        mdb_key_ref = Ref(MDBValue(rkey))
-        mdb_val_ref = val === C_NULL ? Ref(MDBValue()) : Ref(MDBValue(rval))
-        check(mdb_del(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref))
-    end
+    val_arg = val === C_NULL ? MDBValue() : val
+    mdb_del(txn, dbi, key, val_arg)
 end
 
 "Get items from a database"
 function get(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
-    rkey = toref(key)
-    GC.@preserve rkey begin
-        mdb_key_ref = Ref(MDBValue(rkey))
-        mdb_val_ref = Ref(MDBValue())
-        check(mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref))
-        return mbd_unpack(T, mdb_val_ref)
-    end
+    val_ref = Ref(MDBValue())
+    mdb_get(txn, dbi, key, val_ref)
+    return mbd_unpack(T, val_ref)
 end

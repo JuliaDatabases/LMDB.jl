@@ -1,13 +1,75 @@
-const MBDValue = MDB_val
 const EnvironmentFlags = Unsigned
+
+# Zero-valued `MDB_val` sentinels — used as out-parameters and for the
+# "no value" form of `delete!`. Constructing a non-empty `MDB_val` from a
+# Julia value requires taking a raw pointer into that value, which is only
+# safe when the value is GC-preserved across the eventual ccall. We keep
+# that pointer extraction confined to `unsafe_convert(::Ptr{MDB_val}, ::MDBArg)`
+# below, where ccall's automatic preservation covers the carrier.
 MDBValue() = MDB_val(zero(Csize_t), C_NULL)
-MDBValue(_::Nothing) = MDBValue()
-MDBValue(val::String) = MDB_val(Csize_t(sizeof(val)), convert(Ptr{Cvoid},pointer(val)))
-function MDBValue(val::T) where {T}
-    isbitstype(T) && error("Can not wrap a $T in MDBValue. Use a $T array instead")
-    val_size = sizeof(eltype(val))*length(val)
-    return MDB_val(Csize_t(val_size), convert(Ptr{Cvoid},pointer(val)))
+MDBValue(::Nothing) = MDBValue()
+
+# Self-rooted argument for `Ptr{MDB_val}` ccall sites. `box` is an
+# uninitialized `Ref{MDB_val}`; `data` is the Julia-owned buffer whose
+# pointer the C call needs to see. `cconvert` returns an `MDBArg`, ccall
+# preserves it across the call, and `unsafe_convert` (below) is the one
+# place pointer extraction happens — that means `data` is provably alive
+# at the moment its pointer is taken.
+struct MDBArg{D}
+    box::Base.RefValue{MDB_val}
+    data::D
+    MDBArg(data::D) where {D} = new{D}(Ref{MDB_val}(), data)
 end
+
+# Lazy pointer extraction. Runs while ccall is preserving `m`; therefore
+# `m.data` is alive at the point we ask it for a pointer, satisfying the
+# Julia GC contract for `Base.unsafe_convert`.
+@inline function Base.unsafe_convert(::Type{Ptr{MDB_val}}, m::MDBArg{String})
+    m.box[] = MDB_val(Csize_t(sizeof(m.data)),
+                       Ptr{Cvoid}(Base.unsafe_convert(Ptr{UInt8}, m.data)))
+    return Base.unsafe_convert(Ptr{MDB_val}, m.box)
+end
+@inline function Base.unsafe_convert(::Type{Ptr{MDB_val}}, m::MDBArg{<:AbstractArray{T}}) where {T}
+    m.box[] = MDB_val(Csize_t(sizeof(T) * length(m.data)),
+                       Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, m.data)))
+    return Base.unsafe_convert(Ptr{MDB_val}, m.box)
+end
+@inline function Base.unsafe_convert(::Type{Ptr{MDB_val}}, m::MDBArg{<:Base.RefValue{T}}) where {T}
+    m.box[] = MDB_val(Csize_t(sizeof(T)),
+                       Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, m.data)))
+    return Base.unsafe_convert(Ptr{MDB_val}, m.box)
+end
+
+# Bare `MDB_val` (used for `delete!`'s empty val): heap-box it.
+Base.cconvert(::Type{Ptr{MDB_val}}, x::MDB_val) = Ref(x)
+# Pre-built `Ref{MDB_val}` (iterator state, `get` out-param): passthrough;
+# ccall reads/writes the box directly.
+Base.cconvert(::Type{Ptr{MDB_val}}, x::Base.RefValue{MDB_val}) = x
+# User input — package the data, defer pointer extraction.
+Base.cconvert(::Type{Ptr{MDB_val}}, x::String)        = MDBArg(x)
+Base.cconvert(::Type{Ptr{MDB_val}}, x::Array)         = MDBArg(x)
+# Other AbstractArrays that support `unsafe_convert(Ptr{T}, x)` flow through —
+# contiguous `SubArray`, `ReinterpretArray`, etc. Non-contiguous inputs
+# surface the standard "cannot take pointer" error from `unsafe_convert`.
+# The `Array` method above stays as a more-specific overload to break the
+# ambiguity with `Base.cconvert(::Type{<:Ptr}, ::Array)`.
+Base.cconvert(::Type{Ptr{MDB_val}}, x::AbstractArray) = MDBArg(x)
+Base.cconvert(::Type{Ptr{MDB_val}}, x::Base.RefValue) = MDBArg(x)
+# Bare bitstype scalar: heap-box via `Ref` so it has a stable address.
+function Base.cconvert(::Type{Ptr{MDB_val}}, x::T) where {T}
+    isbitstype(T) || throw(MethodError(Base.cconvert, (Ptr{MDB_val}, x)))
+    MDBArg(Ref(x))
+end
+
+# Private: build an `MDB_val` whose `mv_data` aliases `buf`. The pointer
+# is taken via `unsafe_convert`; the caller MUST keep `buf` alive across
+# any ccall that reads the resulting `MDB_val` (in practice, by wrapping
+# the call site in `GC.@preserve buf ...`). Used by the cursor iterator,
+# which already threads its key buffer through the iteration state for
+# exactly this reason.
+@inline _mdb_val_for(buf::Vector{T}) where {T} =
+    MDB_val(Csize_t(sizeof(T) * length(buf)),
+            Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, buf)))
 
 mbd_unpack(::Type{T}, mdb_val_ref::Ref{MDB_val}) where {T} = _mbd_unpack(T, mdb_val_ref[])
 function _mbd_unpack(::Type{T}, mdb_val::MDB_val) where {T <: String}
@@ -35,16 +97,6 @@ function version()
     patch = Ref{Cint}()
     ver_str = mdb_version(major, minor, patch)
     return VersionNumber(major[], minor[], patch[]), unsafe_string(ver_str)
-end
-
-"""Return a string describing a given error code
-
-Function returns description of the error as a string. It accepts following arguments:
-* `err::Int32`: An error code.
-"""
-function errormsg(err::Cint)
-    errstr = mdb_strerror(err)
-    return unsafe_string(errstr)
 end
 
 """ Check if binary flag is set in provided value"""

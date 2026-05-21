@@ -14,7 +14,7 @@ mutable struct MDB_txn end
 
 const MDB_dbi = Cuint
 
-function mdb_dbi_open(txn, name, flags, dbi)
+@checked function mdb_dbi_open(txn, name, flags, dbi)
     @ccall liblmdb.mdb_dbi_open(txn::Ptr{MDB_txn}, name::Cstring, flags::Cuint,
                                 dbi::Ptr{MDB_dbi})::Cint
 end
@@ -91,41 +91,41 @@ function mdb_strerror(err)
     @ccall liblmdb.mdb_strerror(err::Cint)::Cstring
 end
 
-function mdb_env_create(env)
+@checked function mdb_env_create(env)
     @ccall liblmdb.mdb_env_create(env::Ptr{Ptr{MDB_env}})::Cint
 end
 
-function mdb_env_open(env, path, flags, mode)
+@checked function mdb_env_open(env, path, flags, mode)
     @ccall liblmdb.mdb_env_open(env::Ptr{MDB_env}, path::Cstring, flags::Cuint,
                                 mode::mdb_mode_t)::Cint
 end
 
-function mdb_env_copy(env, path)
+@checked function mdb_env_copy(env, path)
     @ccall liblmdb.mdb_env_copy(env::Ptr{MDB_env}, path::Cstring)::Cint
 end
 
-function mdb_env_copyfd(env, fd)
+@checked function mdb_env_copyfd(env, fd)
     @ccall liblmdb.mdb_env_copyfd(env::Ptr{MDB_env}, fd::mdb_filehandle_t)::Cint
 end
 
-function mdb_env_copy2(env, path, flags)
+@checked function mdb_env_copy2(env, path, flags)
     @ccall liblmdb.mdb_env_copy2(env::Ptr{MDB_env}, path::Cstring, flags::Cuint)::Cint
 end
 
-function mdb_env_copyfd2(env, fd, flags)
+@checked function mdb_env_copyfd2(env, fd, flags)
     @ccall liblmdb.mdb_env_copyfd2(env::Ptr{MDB_env}, fd::mdb_filehandle_t,
                                    flags::Cuint)::Cint
 end
 
-function mdb_env_stat(env, stat)
+@checked function mdb_env_stat(env, stat)
     @ccall liblmdb.mdb_env_stat(env::Ptr{MDB_env}, stat::Ptr{MDB_stat})::Cint
 end
 
-function mdb_env_info(env, stat)
+@checked function mdb_env_info(env, stat)
     @ccall liblmdb.mdb_env_info(env::Ptr{MDB_env}, stat::Ptr{MDB_envinfo})::Cint
 end
 
-function mdb_env_sync(env, force)
+@checked function mdb_env_sync(env, force)
     @ccall liblmdb.mdb_env_sync(env::Ptr{MDB_env}, force::Cint)::Cint
 end
 
@@ -133,35 +133,35 @@ function mdb_env_close(env)
     @ccall liblmdb.mdb_env_close(env::Ptr{MDB_env})::Cvoid
 end
 
-function mdb_env_set_flags(env, flags, onoff)
+@checked function mdb_env_set_flags(env, flags, onoff)
     @ccall liblmdb.mdb_env_set_flags(env::Ptr{MDB_env}, flags::Cuint, onoff::Cint)::Cint
 end
 
-function mdb_env_get_flags(env, flags)
+@checked function mdb_env_get_flags(env, flags)
     @ccall liblmdb.mdb_env_get_flags(env::Ptr{MDB_env}, flags::Ptr{Cuint})::Cint
 end
 
-function mdb_env_get_path(env, path)
+@checked function mdb_env_get_path(env, path)
     @ccall liblmdb.mdb_env_get_path(env::Ptr{MDB_env}, path::Ptr{Cstring})::Cint
 end
 
-function mdb_env_get_fd(env, fd)
+@checked function mdb_env_get_fd(env, fd)
     @ccall liblmdb.mdb_env_get_fd(env::Ptr{MDB_env}, fd::Ptr{mdb_filehandle_t})::Cint
 end
 
-function mdb_env_set_mapsize(env, size)
+@checked function mdb_env_set_mapsize(env, size)
     @ccall liblmdb.mdb_env_set_mapsize(env::Ptr{MDB_env}, size::Csize_t)::Cint
 end
 
-function mdb_env_set_maxreaders(env, readers)
+@checked function mdb_env_set_maxreaders(env, readers)
     @ccall liblmdb.mdb_env_set_maxreaders(env::Ptr{MDB_env}, readers::Cuint)::Cint
 end
 
-function mdb_env_get_maxreaders(env, readers)
+@checked function mdb_env_get_maxreaders(env, readers)
     @ccall liblmdb.mdb_env_get_maxreaders(env::Ptr{MDB_env}, readers::Ptr{Cuint})::Cint
 end
 
-function mdb_env_set_maxdbs(env, dbs)
+@checked function mdb_env_set_maxdbs(env, dbs)
     @ccall liblmdb.mdb_env_set_maxdbs(env::Ptr{MDB_env}, dbs::MDB_dbi)::Cint
 end
 
@@ -169,7 +169,7 @@ function mdb_env_get_maxkeysize(env)
     @ccall liblmdb.mdb_env_get_maxkeysize(env::Ptr{MDB_env})::Cint
 end
 
-function mdb_env_set_userctx(env, ctx)
+@checked function mdb_env_set_userctx(env, ctx)
     @ccall liblmdb.mdb_env_set_userctx(env::Ptr{MDB_env}, ctx::Ptr{Cvoid})::Cint
 end
 
@@ -180,11 +180,11 @@ end
 # typedef void MDB_assert_func ( MDB_env * env , const char * msg )
 const MDB_assert_func = Cvoid
 
-function mdb_env_set_assert(env, func)
+@checked function mdb_env_set_assert(env, func)
     @ccall liblmdb.mdb_env_set_assert(env::Ptr{MDB_env}, func::Ptr{MDB_assert_func})::Cint
 end
 
-function mdb_txn_begin(env, parent, flags, txn)
+@checked function mdb_txn_begin(env, parent, flags, txn)
     @ccall liblmdb.mdb_txn_begin(env::Ptr{MDB_env}, parent::Ptr{MDB_txn}, flags::Cuint,
                                  txn::Ptr{Ptr{MDB_txn}})::Cint
 end
@@ -197,7 +197,7 @@ function mdb_txn_id(txn)
     @ccall liblmdb.mdb_txn_id(txn::Ptr{MDB_txn})::Csize_t
 end
 
-function mdb_txn_commit(txn)
+@checked function mdb_txn_commit(txn)
     @ccall liblmdb.mdb_txn_commit(txn::Ptr{MDB_txn})::Cint
 end
 
@@ -209,57 +209,57 @@ function mdb_txn_reset(txn)
     @ccall liblmdb.mdb_txn_reset(txn::Ptr{MDB_txn})::Cvoid
 end
 
-function mdb_txn_renew(txn)
+@checked function mdb_txn_renew(txn)
     @ccall liblmdb.mdb_txn_renew(txn::Ptr{MDB_txn})::Cint
 end
 
-function mdb_stat(txn, dbi, stat)
+@checked function mdb_stat(txn, dbi, stat)
     @ccall liblmdb.mdb_stat(txn::Ptr{MDB_txn}, dbi::MDB_dbi, stat::Ptr{MDB_stat})::Cint
 end
 
-function mdb_dbi_flags(txn, dbi, flags)
+@checked function mdb_dbi_flags(txn, dbi, flags)
     @ccall liblmdb.mdb_dbi_flags(txn::Ptr{MDB_txn}, dbi::MDB_dbi, flags::Ptr{Cuint})::Cint
 end
 
-function mdb_drop(txn, dbi, del)
+@checked function mdb_drop(txn, dbi, del)
     @ccall liblmdb.mdb_drop(txn::Ptr{MDB_txn}, dbi::MDB_dbi, del::Cint)::Cint
 end
 
-function mdb_set_compare(txn, dbi, cmp)
+@checked function mdb_set_compare(txn, dbi, cmp)
     @ccall liblmdb.mdb_set_compare(txn::Ptr{MDB_txn}, dbi::MDB_dbi,
                                    cmp::Ptr{MDB_cmp_func})::Cint
 end
 
-function mdb_set_dupsort(txn, dbi, cmp)
+@checked function mdb_set_dupsort(txn, dbi, cmp)
     @ccall liblmdb.mdb_set_dupsort(txn::Ptr{MDB_txn}, dbi::MDB_dbi,
                                    cmp::Ptr{MDB_cmp_func})::Cint
 end
 
-function mdb_set_relfunc(txn, dbi, rel)
+@checked function mdb_set_relfunc(txn, dbi, rel)
     @ccall liblmdb.mdb_set_relfunc(txn::Ptr{MDB_txn}, dbi::MDB_dbi,
                                    rel::Ptr{MDB_rel_func})::Cint
 end
 
-function mdb_set_relctx(txn, dbi, ctx)
+@checked function mdb_set_relctx(txn, dbi, ctx)
     @ccall liblmdb.mdb_set_relctx(txn::Ptr{MDB_txn}, dbi::MDB_dbi, ctx::Ptr{Cvoid})::Cint
 end
 
-function mdb_get(txn, dbi, key, data)
+@checked function mdb_get(txn, dbi, key, data)
     @ccall liblmdb.mdb_get(txn::Ptr{MDB_txn}, dbi::MDB_dbi, key::Ptr{MDB_val},
                            data::Ptr{MDB_val})::Cint
 end
 
-function mdb_put(txn, dbi, key, data, flags)
+@checked function mdb_put(txn, dbi, key, data, flags)
     @ccall liblmdb.mdb_put(txn::Ptr{MDB_txn}, dbi::MDB_dbi, key::Ptr{MDB_val},
                            data::Ptr{MDB_val}, flags::Cuint)::Cint
 end
 
-function mdb_del(txn, dbi, key, data)
+@checked function mdb_del(txn, dbi, key, data)
     @ccall liblmdb.mdb_del(txn::Ptr{MDB_txn}, dbi::MDB_dbi, key::Ptr{MDB_val},
                            data::Ptr{MDB_val})::Cint
 end
 
-function mdb_cursor_open(txn, dbi, cursor)
+@checked function mdb_cursor_open(txn, dbi, cursor)
     @ccall liblmdb.mdb_cursor_open(txn::Ptr{MDB_txn}, dbi::MDB_dbi,
                                    cursor::Ptr{Ptr{MDB_cursor}})::Cint
 end
@@ -268,7 +268,7 @@ function mdb_cursor_close(cursor)
     @ccall liblmdb.mdb_cursor_close(cursor::Ptr{MDB_cursor})::Cvoid
 end
 
-function mdb_cursor_renew(txn, cursor)
+@checked function mdb_cursor_renew(txn, cursor)
     @ccall liblmdb.mdb_cursor_renew(txn::Ptr{MDB_txn}, cursor::Ptr{MDB_cursor})::Cint
 end
 
@@ -280,21 +280,21 @@ function mdb_cursor_dbi(cursor)
     @ccall liblmdb.mdb_cursor_dbi(cursor::Ptr{MDB_cursor})::MDB_dbi
 end
 
-function mdb_cursor_get(cursor, key, data, op)
+@checked function mdb_cursor_get(cursor, key, data, op)
     @ccall liblmdb.mdb_cursor_get(cursor::Ptr{MDB_cursor}, key::Ptr{MDB_val},
                                   data::Ptr{MDB_val}, op::MDB_cursor_op)::Cint
 end
 
-function mdb_cursor_put(cursor, key, data, flags)
+@checked function mdb_cursor_put(cursor, key, data, flags)
     @ccall liblmdb.mdb_cursor_put(cursor::Ptr{MDB_cursor}, key::Ptr{MDB_val},
                                   data::Ptr{MDB_val}, flags::Cuint)::Cint
 end
 
-function mdb_cursor_del(cursor, flags)
+@checked function mdb_cursor_del(cursor, flags)
     @ccall liblmdb.mdb_cursor_del(cursor::Ptr{MDB_cursor}, flags::Cuint)::Cint
 end
 
-function mdb_cursor_count(cursor, countp)
+@checked function mdb_cursor_count(cursor, countp)
     @ccall liblmdb.mdb_cursor_count(cursor::Ptr{MDB_cursor}, countp::Ptr{Csize_t})::Cint
 end
 
@@ -311,12 +311,12 @@ end
 # typedef int ( MDB_msg_func ) ( const char * msg , void * ctx )
 const MDB_msg_func = Cvoid
 
-function mdb_reader_list(env, func, ctx)
+@checked function mdb_reader_list(env, func, ctx)
     @ccall liblmdb.mdb_reader_list(env::Ptr{MDB_env}, func::Ptr{MDB_msg_func},
                                    ctx::Ptr{Cvoid})::Cint
 end
 
-function mdb_reader_check(env, dead)
+@checked function mdb_reader_check(env, dead)
     @ccall liblmdb.mdb_reader_check(env::Ptr{MDB_env}, dead::Ptr{Cint})::Cint
 end
 
