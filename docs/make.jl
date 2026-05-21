@@ -8,8 +8,9 @@ function main()
     makedocs(
         sitename = "LMDB.jl",
         authors = "Art Wild, Fabian Gans, Tim Besard",
+        repo = Documenter.Remotes.GitHub("JuliaDatabases", "LMDB.jl"),
         format = Documenter.HTML(prettyurls = ci,
-                                 edit_link = "master"),
+                                 edit_link = "main"),
         modules = [LMDB],
         checkdocs = :exports,
         doctest = true,
@@ -39,7 +40,7 @@ function main()
 
     if ci
         deploydocs(
-            repo = "github.com/wildart/LMDB.jl.git",
+            repo = "github.com/JuliaDatabases/LMDB.jl.git",
         )
     end
 end
