@@ -444,7 +444,9 @@ function walk(f, cur::Cursor; from = nothing)
                                                           MDB_SET_RANGE)
     end
     while iszero(ret)
-        f(key_ref, val_ref)
+        # Returning `false` from the callback halts iteration; any other
+        # return (including `nothing`) continues.
+        f(key_ref, val_ref) === false && return
         ret = unchecked_mdb_cursor_get(cur, key_ref, val_ref, MDB_NEXT)
     end
     ret == MDB_NOTFOUND && return
