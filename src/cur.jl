@@ -67,28 +67,33 @@ struct ReturnValueSize end
 
 arcopy(x::Array) = copy(x)
 arcopy(x) = x
-process_returns(::ReturnKeys{K}, mdb_key_ref, _) where K = arcopy(mbd_unpack(K, mdb_key_ref)),MDB_NEXT
-process_returns(::ReturnValues{V}, _, mdb_val_ref) where V = arcopy(mbd_unpack(V, mdb_val_ref)), MDB_NEXT
-process_returns(::ReturnBoth{K,V}, mdb_key_ref, mdb_val_ref) where {K,V} = arcopy((mbd_unpack(K, mdb_key_ref)) => arcopy(mbd_unpack(V, mdb_val_ref))), MDB_NEXT
-process_returns(::ReturnValueSize, _, mdb_val_ref) = mdb_val_ref[].mv_size, MDB_NEXT
+# process_returns returns (retval, next_op, key_buf). key_buf is whatever the
+# iterator wrote into mdb_key_ref via mdb_key_ref[] = MDBValue(buf); it must
+# be GC-preserved across the next mdb_cursor_get call. Variants that don't
+# rewrite the key return `nothing` for key_buf.
+process_returns(::ReturnKeys{K}, mdb_key_ref, _) where K = arcopy(mbd_unpack(K, mdb_key_ref)), MDB_NEXT, nothing
+process_returns(::ReturnValues{V}, _, mdb_val_ref) where V = arcopy(mbd_unpack(V, mdb_val_ref)), MDB_NEXT, nothing
+process_returns(::ReturnBoth{K,V}, mdb_key_ref, mdb_val_ref) where {K,V} = arcopy((mbd_unpack(K, mdb_key_ref)) => arcopy(mbd_unpack(V, mdb_val_ref))), MDB_NEXT, nothing
+process_returns(::ReturnValueSize, _, mdb_val_ref) = mdb_val_ref[].mv_size, MDB_NEXT, nothing
 function init_values(d::LMDBIterator)
-    k,op = if !isempty(d.prefix)
-        Ref(MDBValue(d.prefix)), MDB_SET_RANGE
+    k, op, key_buf = if !isempty(d.prefix)
+        Ref(MDBValue(d.prefix)), MDB_SET_RANGE, d.prefix
     else
-        Ref(MDBValue()), MDB_FIRST
+        Ref(MDBValue()), MDB_FIRST, nothing
     end
     v = Ref(MDBValue())
-    return k,v,op
+    return k, v, op, key_buf
 end
 
 Base.iterate(iter::LMDBIterator) = Base.iterate(iter, init_values(iter))
 
 "Iterate over database"
 function Base.iterate(iter::LMDBIterator, refs)
-    # Setup parameters
-    mdb_key_ref, mdb_val_ref, cursor_op = refs
+    mdb_key_ref, mdb_val_ref, cursor_op, key_buf = refs
 
-    ret = _mdb_cursor_get(iter.cur.handle, mdb_key_ref, mdb_val_ref, cursor_op)
+    # key_buf may be aliased by mdb_key_ref (e.g. DirectoryLister or
+    # SET_RANGE seed) and must outlive the C call.
+    ret = GC.@preserve key_buf _mdb_cursor_get(iter.cur.handle, mdb_key_ref, mdb_val_ref, cursor_op)
 
     if ret == 0
         #Check if we are still in key prefix
@@ -100,8 +105,8 @@ function Base.iterate(iter::LMDBIterator, refs)
         end
         pr = process_returns(iter.r, mdb_key_ref, mdb_val_ref)
         pr === nothing && return nothing
-        retval, nextop = pr
-        return (retval, (mdb_key_ref, mdb_val_ref, nextop))
+        retval, nextop, next_key_buf = pr
+        return (retval, (mdb_key_ref, mdb_val_ref, nextop, next_key_buf))
     elseif ret == MDB_NOTFOUND
         return nothing
     else
@@ -121,14 +126,16 @@ function process_returns(l::DirectoryLister{K}, mdb_key_ref, _) where K
     k = mbd_unpack(Vector{UInt8}, mdb_key_ref)
     nextsep = findnext(==(l.sep),k,l.istart)
     if nextsep === nothing
-        return arcopy(mbd_unpack(K, mdb_key_ref)),MDB_NEXT
+        return arcopy(mbd_unpack(K, mdb_key_ref)), MDB_NEXT, nothing
     else
         k = copy(k)
         resize!(k,nextsep)
         kout = arcopy(mbd_unpack(K, Ref(MDBValue(k))))
         k[end] = k[end]+1
         mdb_key_ref[] = MDBValue(k)
-        return kout, MDB_SET_RANGE
+        # Return k so the next iterate() can GC.@preserve it across the
+        # MDB_SET_RANGE call that reads through mdb_key_ref.
+        return kout, MDB_SET_RANGE, k
     end
 end
 
