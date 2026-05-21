@@ -57,11 +57,14 @@ function environment(f::Function, path::String; flags::Cuint=zero(Cuint), mode::
     end
 end
 
-"""Close the environment and release the memory map"""
+"""Close the environment and release the memory map.
+
+Idempotent: calling `close` on an already-closed `Environment` is a
+silent no-op, matching the convention of `close(::IO)`. This makes
+finalizers safe to run after an explicit close.
+"""
 function close(env::Environment)
-    if env.handle == C_NULL
-        throw(LMDBError(-1,"Environment is already closed"))
-    end
+    env.handle == C_NULL && return zero(Cint)
     _mdb_env_close(env.handle)
     env.handle = C_NULL
     env.path = ""
@@ -103,19 +106,21 @@ unset!(env::Environment, flag::EnvironmentFlags) = unset!(env, Cuint(flag))
 
 **Note:** Consult LMDB documentation for particual values of environment parameters and flags.
 """
-function setindex!(env::Environment, val::Cuint, option::Symbol)
-    if option == :Readers
-        mdb_env_set_maxreaders(env.handle, val)
+function setindex!(env::Environment, val::Integer, option::Symbol)
+    if option == :Flags
+        set!(env, Cuint(val))
+    elseif option == :Readers
+        mdb_env_set_maxreaders(env.handle, Cuint(val))
     elseif option == :MapSize
-        mdb_env_set_mapsize(env.handle, val)
+        # MDB_env_set_mapsize takes a size_t; using Cuint truncates >4 GiB
+        # maps on 64-bit platforms (issue #38, PRs #37 / #40).
+        mdb_env_set_mapsize(env.handle, Csize_t(val))
     elseif option == :DBs
-        mdb_env_set_maxdbs(env.handle, val)
+        mdb_env_set_maxdbs(env.handle, Cuint(val))
     else
-        @warn("Cannot set $(string(option)) value")
-        Cint(0)
+        throw(ArgumentError("Unsupported environment option :$option (supported: :Flags, :Readers, :MapSize, :DBs)"))
     end
 end
-setindex!(env::Environment, val::Int, option::Symbol) = setindex!(env, Cuint(val), option)
 
 """Get environment flags and parameters
 

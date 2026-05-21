@@ -25,11 +25,9 @@ function open(f::Function, txn::Transaction, dbi::DBI)
     end
 end
 
-"Close a cursor"
+"Close a cursor. Idempotent."
 function close(cur::Cursor)
-    if cur.handle == C_NULL
-        @warn("Cursor is already closed")
-    end
+    cur.handle == C_NULL && return
     _mdb_cursor_close(cur.handle)
     cur.handle = C_NULL
     return
@@ -67,28 +65,33 @@ struct ReturnValueSize end
 
 arcopy(x::Array) = copy(x)
 arcopy(x) = x
-process_returns(::ReturnKeys{K}, mdb_key_ref, _) where K = arcopy(mbd_unpack(K, mdb_key_ref)),MDB_NEXT
-process_returns(::ReturnValues{V}, _, mdb_val_ref) where V = arcopy(mbd_unpack(V, mdb_val_ref)), MDB_NEXT
-process_returns(::ReturnBoth{K,V}, mdb_key_ref, mdb_val_ref) where {K,V} = arcopy((mbd_unpack(K, mdb_key_ref)) => arcopy(mbd_unpack(V, mdb_val_ref))), MDB_NEXT
-process_returns(::ReturnValueSize, _, mdb_val_ref) = mdb_val_ref[].mv_size, MDB_NEXT
+# process_returns returns (retval, next_op, key_buf). key_buf is whatever the
+# iterator wrote into mdb_key_ref via mdb_key_ref[] = MDBValue(buf); it must
+# be GC-preserved across the next mdb_cursor_get call. Variants that don't
+# rewrite the key return `nothing` for key_buf.
+process_returns(::ReturnKeys{K}, mdb_key_ref, _) where K = arcopy(mbd_unpack(K, mdb_key_ref)), MDB_NEXT, nothing
+process_returns(::ReturnValues{V}, _, mdb_val_ref) where V = arcopy(mbd_unpack(V, mdb_val_ref)), MDB_NEXT, nothing
+process_returns(::ReturnBoth{K,V}, mdb_key_ref, mdb_val_ref) where {K,V} = arcopy((mbd_unpack(K, mdb_key_ref)) => arcopy(mbd_unpack(V, mdb_val_ref))), MDB_NEXT, nothing
+process_returns(::ReturnValueSize, _, mdb_val_ref) = mdb_val_ref[].mv_size, MDB_NEXT, nothing
 function init_values(d::LMDBIterator)
-    k,op = if !isempty(d.prefix)
-        Ref(MDBValue(d.prefix)), MDB_SET_RANGE
+    k, op, key_buf = if !isempty(d.prefix)
+        Ref(MDBValue(d.prefix)), MDB_SET_RANGE, d.prefix
     else
-        Ref(MDBValue()), MDB_FIRST
+        Ref(MDBValue()), MDB_FIRST, nothing
     end
     v = Ref(MDBValue())
-    return k,v,op
+    return k, v, op, key_buf
 end
 
 Base.iterate(iter::LMDBIterator) = Base.iterate(iter, init_values(iter))
 
 "Iterate over database"
 function Base.iterate(iter::LMDBIterator, refs)
-    # Setup parameters
-    mdb_key_ref, mdb_val_ref, cursor_op = refs
+    mdb_key_ref, mdb_val_ref, cursor_op, key_buf = refs
 
-    ret = _mdb_cursor_get(iter.cur.handle, mdb_key_ref, mdb_val_ref, cursor_op)
+    # key_buf may be aliased by mdb_key_ref (e.g. DirectoryLister or
+    # SET_RANGE seed) and must outlive the C call.
+    ret = GC.@preserve key_buf _mdb_cursor_get(iter.cur.handle, mdb_key_ref, mdb_val_ref, cursor_op)
 
     if ret == 0
         #Check if we are still in key prefix
@@ -100,8 +103,8 @@ function Base.iterate(iter::LMDBIterator, refs)
         end
         pr = process_returns(iter.r, mdb_key_ref, mdb_val_ref)
         pr === nothing && return nothing
-        retval, nextop = pr
-        return (retval, (mdb_key_ref, mdb_val_ref, nextop))
+        retval, nextop, next_key_buf = pr
+        return (retval, (mdb_key_ref, mdb_val_ref, nextop, next_key_buf))
     elseif ret == MDB_NOTFOUND
         return nothing
     else
@@ -121,14 +124,16 @@ function process_returns(l::DirectoryLister{K}, mdb_key_ref, _) where K
     k = mbd_unpack(Vector{UInt8}, mdb_key_ref)
     nextsep = findnext(==(l.sep),k,l.istart)
     if nextsep === nothing
-        return arcopy(mbd_unpack(K, mdb_key_ref)),MDB_NEXT
+        return arcopy(mbd_unpack(K, mdb_key_ref)), MDB_NEXT, nothing
     else
         k = copy(k)
         resize!(k,nextsep)
         kout = arcopy(mbd_unpack(K, Ref(MDBValue(k))))
         k[end] = k[end]+1
         mdb_key_ref[] = MDBValue(k)
-        return kout, MDB_SET_RANGE
+        # Return k so the next iterate() can GC.@preserve it across the
+        # MDB_SET_RANGE call that reads through mdb_key_ref.
+        return kout, MDB_SET_RANGE, k
     end
 end
 
@@ -157,15 +162,13 @@ end
 This function retrieves key/data pairs from the database.
 """
 function get(cur::Cursor, key, ::Type{T}, op::MDB_cursor_op=MDB_SET_KEY) where T
-    # Setup parameters
-    mdb_key_ref = Ref(MDBValue(toref(key)))
-    mdb_val_ref = Ref(MDBValue())
-
-    # Get value
-    mdb_cursor_get(cur.handle, mdb_key_ref, mdb_val_ref, op)
-
-    # Convert to proper type
-    return mbd_unpack(T, mdb_val_ref)
+    rkey = toref(key)
+    GC.@preserve rkey begin
+        mdb_key_ref = Ref(MDBValue(rkey))
+        mdb_val_ref = Ref(MDBValue())
+        mdb_cursor_get(cur.handle, mdb_key_ref, mdb_val_ref, op)
+        return mbd_unpack(T, mdb_val_ref)
+    end
 end
 
 """Store by cursor.
@@ -173,10 +176,13 @@ end
 This function stores key/data pairs into the database. The cursor is positioned at the new item, or on failure usually near it.
 """
 function put!(cur::Cursor, key, val; flags::Cuint = zero(Cuint))
-    mdb_key_ref = Ref(MDBValue(toref(key)))
-    mdb_val_ref = Ref(MDBValue(toref(val)))
-
-    mdb_cursor_put(cur.handle, mdb_key_ref, mdb_val_ref, flags)
+    rkey = toref(key)
+    rval = toref(val)
+    GC.@preserve rkey rval begin
+        mdb_key_ref = Ref(MDBValue(rkey))
+        mdb_val_ref = Ref(MDBValue(rval))
+        mdb_cursor_put(cur.handle, mdb_key_ref, mdb_val_ref, flags)
+    end
 end
 
 "Delete current key/data pair to which the cursor refers"

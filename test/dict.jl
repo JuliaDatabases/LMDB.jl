@@ -79,4 +79,40 @@ d["b"] = [0,0,0]
     end
 end
 
+@testset "String -> Int64 round-trip (#46)" begin
+    mktempdir() do dir
+        d = LMDBDict{String, Int64}(dir)
+        d["aa"] = 2
+        d["ab"] = 3
+        d["ac"] = 2
+        @test d["aa"] === Int64(2)
+        @test d["ab"] === Int64(3)
+        @test d["ac"] === Int64(2)
+        # Force a GC pass between the writes and the reads. Before the
+        # GC.@preserve fix this would alias unrelated memory.
+        GC.gc(); GC.gc()
+        @test d["aa"] === Int64(2)
+        @test d["ab"] === Int64(3)
+    end
+end
+
+@testset "Vector value owns its memory (#41)" begin
+    mktempdir() do dir
+        d = LMDBDict{String, Vector{Float32}}(dir)
+        d["k"] = Float32[1,2,3,4]
+        v = d["k"]
+        close(d)
+        GC.gc(); GC.gc()
+        @test v == Float32[1,2,3,4]
+    end
+end
+
+@testset "LMDBDict mapsize kwarg (#45)" begin
+    mktempdir() do dir
+        d = LMDBDict{String, String}(dir; mapsize = 64 * 1024 * 1024)
+        d["k"] = "v"
+        @test d["k"] == "v"
+    end
+end
+
 end
