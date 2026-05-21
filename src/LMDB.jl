@@ -1,13 +1,22 @@
 module LMDB
 
-import Base: open, close, getindex, setindex!, put!, reset,
-             isopen, count, delete!, keys, get, show
+import Base: open, close, getindex, setindex!, put!, pop!, replace!, reset, copy,
+             isopen, count, delete!, keys, get, show, stat
 
-export Environment, create, open, close, sync, set!, unset!, getindex, setindex!, path, info, show,
+export Environment, create, open, close, sync, set!, unset!, getindex, setindex!, path, info, stat, show,
+       reader_check, reader_list, copy,
        Transaction, start, abort, commit, reset, renew, environment,
-       DBI, drop, delete!, keys, get, put!,
+       DBI, drop, delete!, keys, get, put!, put_reserved!, tryget, replace!, pop!,
        Cursor, count, transaction, database,
+       seek_first_dup!, seek_last_dup!,
+       next_dup!, prev_dup!, next_nodup!, prev_nodup!,
        isflagset, isopen,
+       # commonly-needed env / write flags
+       MDB_RDONLY, MDB_NOTLS, MDB_NORDAHEAD, MDB_NOSUBDIR,
+       MDB_NOSYNC, MDB_NOMETASYNC, MDB_WRITEMAP, MDB_NOMEMINIT,
+       MDB_CREATE, MDB_DUPSORT, MDB_INTEGERKEY, MDB_REVERSEKEY,
+       MDB_DUPFIXED, MDB_INTEGERDUP, MDB_REVERSEDUP,
+       MDB_NOOVERWRITE, MDB_NODUPDATA, MDB_APPEND, MDB_RESERVE,
        LMDBError, LMDBDict
 
 # ---------------------------------------------------------------------------

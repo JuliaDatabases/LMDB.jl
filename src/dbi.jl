@@ -12,16 +12,16 @@ Base.cconvert(::Type{MDB_dbi}, d::DBI) = d.handle
 isopen(dbi::DBI) = dbi.handle != zero(Cuint)
 
 "Open a database in the environment"
-function open(txn::Transaction, dbname::String = ""; flags::Cuint = zero(Cuint))
+function open(txn::Transaction, dbname::String = ""; flags::Integer = zero(Cuint))
     cdbname = length(dbname) > 0 ? dbname : Ptr{Cchar}(C_NULL)
     handle = Ref{MDB_dbi}()
-    mdb_dbi_open(txn, cdbname, flags, handle)
+    mdb_dbi_open(txn, cdbname, Cuint(flags), handle)
     return DBI(handle[], dbname)
 end
 
 "Wrapper of DBI `open` for `do` construct"
-function open(f::Function, txn::Transaction, dbname::String = ""; flags::Cuint = zero(Cuint))
-    dbi = open(txn, dbname, flags=flags)
+function open(f::Function, txn::Transaction, dbname::String = ""; flags::Integer = zero(Cuint))
+    dbi = open(txn, dbname, flags=Cuint(flags))
     tenv = env(txn)
     try
         f(dbi)
@@ -62,19 +62,127 @@ function drop(txn::Transaction, dbi::DBI; delete = false)
 end
 
 "Store items into a database"
-function put!(txn::Transaction, dbi::DBI, key, val; flags::Cuint = zero(Cuint))
-    mdb_put(txn, dbi, key, val, flags)
+function put!(txn::Transaction, dbi::DBI, key, val; flags::Integer = zero(Cuint))
+    mdb_put(txn, dbi, key, val, Cuint(flags))
 end
 
-"Delete items from a database"
+"""
+    put_reserved!(f, txn::Transaction, dbi::DBI, key, size::Integer; flags=0)
+
+Allocate `size` bytes of value space at `key` directly in LMDB's
+mmap'd write buffer, then call `f(buf::Vector{UInt8})` so the caller
+fills it in place. Equivalent to `put!` with the `MDB_RESERVE` flag,
+without the intermediate `Vector{UInt8}` round-trip — useful when the
+value's bytes can be produced directly into a destination buffer
+(e.g. by `unsafe_store!` of a header followed by `copyto!` of a
+payload). Heed's `Database::put_reserved` plays the same role.
+
+`buf` is an `unsafe_wrap` over the LMDB-allocated page; it is *only
+valid inside `f`* (and only inside the enclosing write txn). The
+buffer's length is exactly `size`. Don't escape `buf` past `f`'s
+return; copy what you want to keep.
+
+Cannot be combined with `MDB_DUPSORT`/`MDB_DUPFIXED` databases (LMDB
+forbids `MDB_RESERVE` there).
+"""
+function put_reserved!(f, txn::Transaction, dbi::DBI, key, size::Integer;
+                       flags::Integer = zero(Cuint))
+    val_ref = Ref(MDB_val(Csize_t(size), C_NULL))
+    mdb_put(txn, dbi, key, val_ref, Cuint(flags) | Cuint(MDB_RESERVE))
+    v = val_ref[]
+    buf = unsafe_wrap(Array, Ptr{UInt8}(v.mv_data), Int(v.mv_size))
+    return f(buf)
+end
+
+"""
+    delete!(txn::Transaction, dbi::DBI, key) -> Bool
+    delete!(txn::Transaction, dbi::DBI, key, val) -> Bool
+
+Delete `key` (or, in `MDB_DUPSORT`, the specific `(key, val)` pair) from
+the database. Returns `true` if an entry was removed, `false` if the
+key was not present. Other LMDB errors propagate as `LMDBError`.
+
+The Bool-return / no-throw-on-miss shape matches `Base.delete!`'s "if
+any" contract and the dominant LMDB-binding convention (heed, py-lmdb,
+lmdb-js, lmdbxx)."""
 function delete!(txn::Transaction, dbi::DBI, key, val=C_NULL)
     val_arg = val === C_NULL ? MDBValue() : val
-    mdb_del(txn, dbi, key, val_arg)
+    ret = unchecked_mdb_del(txn, dbi, key, val_arg)
+    ret == MDB_NOTFOUND && return false
+    iszero(ret) || throw(LMDBError(ret))
+    return true
 end
 
-"Get items from a database"
+"""
+    stat(txn::Transaction, dbi::DBI) -> NamedTuple
+
+Return statistics for the database referenced by `dbi` within `txn`:
+
+| field            | meaning                                       |
+|------------------|-----------------------------------------------|
+| `psize`          | LMDB page size in bytes                       |
+| `depth`          | B-tree depth                                  |
+| `branch_pages`   | number of internal (non-leaf) pages           |
+| `leaf_pages`     | number of leaf pages                          |
+| `overflow_pages` | number of overflow pages (large values)       |
+| `entries`        | total number of `(key, value)` data items     |
+
+Live byte usage = `(branch_pages + leaf_pages + overflow_pages) * psize`.
+"""
+function stat(txn::Transaction, dbi::DBI)
+    s_ref = Ref{MDB_stat}()
+    mdb_stat(txn, dbi, s_ref)
+    return _stat_namedtuple(s_ref[])
+end
+
+"""Get an item from a database. Throws `LMDBError` if `key` is not present."""
 function get(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
     val_ref = Ref(MDBValue())
     mdb_get(txn, dbi, key, val_ref)
-    return mbd_unpack(T, val_ref)
+    return mdb_unpack(T, val_ref)
+end
+
+"""Get an item from a database, returning `nothing` if `key` is not present.
+Use this in preference to `get` + try/catch when a missing key is expected."""
+function tryget(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
+    val_ref = Ref(MDBValue())
+    ret = unchecked_mdb_get(txn, dbi, key, val_ref)
+    ret == MDB_NOTFOUND && return nothing
+    iszero(ret) || throw(LMDBError(ret))
+    return mdb_unpack(T, val_ref)
+end
+
+"""Get an item from a database, returning `default` if `key` is not present.
+The signature mirrors `Base.get(dict, key, default)`."""
+function get(txn::Transaction, dbi::DBI, key, ::Type{T}, default) where T
+    v = tryget(txn, dbi, key, T)
+    v === nothing ? default : v
+end
+
+"""
+    replace!(txn::Transaction, dbi::DBI, key, val, ::Type{V}=typeof(val))
+        -> Union{V,Nothing}
+
+Atomically write `val` at `key`, returning the previous value (decoded as
+`V`) or `nothing` if `key` was not present. Read and write share the same
+transaction.
+"""
+function replace!(txn::Transaction, dbi::DBI, key, val,
+                  ::Type{V}=typeof(val)) where V
+    old = tryget(txn, dbi, key, V)
+    put!(txn, dbi, key, val)
+    return old
+end
+
+"""
+    pop!(txn::Transaction, dbi::DBI, key, ::Type{T}) -> Union{T,Nothing}
+
+Atomically read and delete the value at `key`, returning it (decoded as
+`T`) or `nothing` if `key` was not present.
+"""
+function pop!(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
+    v = tryget(txn, dbi, key, T)
+    v === nothing && return nothing
+    delete!(txn, dbi, key)
+    return v
 end

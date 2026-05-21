@@ -43,6 +43,13 @@ module LMDB_Env
         ret = open(env, dbname)
         @test ret[1] == 0
 
+        # stat(env) returns the main DB's stats; before any puts, there are
+        # no entries and a positive page size.
+        s = stat(env)
+        @test s isa NamedTuple
+        @test s.psize > 0
+        @test s.entries == 0
+
         # Close environment
         close(env)
         @test !isopen(env)
@@ -55,5 +62,64 @@ module LMDB_Env
         end
     finally
         rm(dbname, recursive=true)
+    end
+
+    # High-level Environment(path; ...) constructor.
+    mktempdir() do dir
+        big = Csize_t(8) * 1024^3
+        env = Environment(dir; mapsize = big, maxreaders = 42, maxdbs = 4,
+                          flags = MDB_NOSYNC | MDB_NOTLS)
+        try
+            @test isopen(env)
+            @test env[:Readers] == 42
+            @test info(env).mapsize == big
+            @test isflagset(env[:Flags], Cuint(MDB_NOSYNC))
+            @test isflagset(env[:Flags], Cuint(MDB_NOTLS))
+        finally
+            close(env)
+        end
+
+        # On failure during open, the Environment ctor closes the partial env.
+        @test_throws LMDBError Environment(joinpath(dir, "definitely_does_not_exist"))
+    end
+
+    # reader_check / reader_list / copy
+    mktempdir() do dir
+        environment(dir) do env
+            # Fresh env: no stale readers.
+            @test reader_check(env) == 0
+
+            # reader_list always emits a header line listing slot fields.
+            txt = reader_list(env)
+            @test txt isa String
+            @test !isempty(txt)
+
+            # Round-trip a copy.
+            start(env) do txn
+                open(txn) do dbi
+                    LMDB.put!(txn, dbi, "k", "v")
+                end
+            end
+            mktempdir() do dst
+                copy(env, dst)
+                environment(dst) do env2
+                    start(env2) do txn
+                        open(txn) do dbi
+                            @test LMDB.tryget(txn, dbi, "k", String) == "v"
+                        end
+                    end
+                end
+            end
+            mktempdir() do dst
+                copy(env, dst; compact=true)
+                environment(dst) do env2
+                    start(env2) do txn
+                        open(txn) do dbi
+                            @test LMDB.tryget(txn, dbi, "k", String) == "v"
+                        end
+                    end
+                end
+            end
+        end
     end
 end

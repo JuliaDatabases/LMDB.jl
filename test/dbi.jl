@@ -58,7 +58,113 @@ module LMDB_DBI
                 end
             end
         end
+
     finally
         rm(dbname, recursive=true)
+    end
+
+    # tryget / get-with-default / stat(txn, dbi) — fresh env so the entry
+    # count is deterministic.
+    mktempdir() do dir
+        environment(dir) do env
+            start(env) do txn
+                open(txn) do dbi
+                    LMDB.put!(txn, dbi, "k1", "v1")
+                    LMDB.put!(txn, dbi, "k2", "v2")
+
+                    @test LMDB.tryget(txn, dbi, "k1", String) == "v1"
+                    @test LMDB.tryget(txn, dbi, "missing", String) === nothing
+                    @test get(txn, dbi, "k2", String, "fallback") == "v2"
+                    @test get(txn, dbi, "missing", String, "fallback") == "fallback"
+
+                    s = LMDB.stat(txn, dbi)
+                    @test s isa NamedTuple
+                    @test s.entries == 2
+                    @test s.psize > 0
+                end
+            end
+        end
+    end
+
+    # put_reserved!: callback-style MDB_RESERVE write.
+    mktempdir() do dir
+        environment(dir) do env
+            start(env) do txn
+                open(txn) do dbi
+                    # Write a 16-byte value where bytes 0..7 are a UInt64
+                    # header and bytes 8..15 are payload. The buffer hands
+                    # back is the LMDB-allocated mmap page; we fill it
+                    # in place — no intermediate Vector.
+                    LMDB.put_reserved!(txn, dbi, "framed", 16) do buf
+                        @test buf isa Vector{UInt8}
+                        @test length(buf) == 16
+                        unsafe_store!(Ptr{UInt64}(pointer(buf)),
+                                      htol(UInt64(0xdeadbeef)))
+                        for i in 1:8
+                            buf[8 + i] = UInt8(i)
+                        end
+                    end
+                    raw = LMDB.tryget(txn, dbi, "framed", Vector{UInt8})
+                    @test length(raw) == 16
+                    @test ltoh(reinterpret(UInt64, raw[1:8])[1]) ==
+                          UInt64(0xdeadbeef)
+                    @test raw[9:16] == UInt8[1, 2, 3, 4, 5, 6, 7, 8]
+
+                    # Return value: whatever the callback returns.
+                    rv = LMDB.put_reserved!(txn, dbi, "rv", 4) do buf
+                        fill!(buf, 0xab)
+                        :sentinel
+                    end
+                    @test rv === :sentinel
+                end
+            end
+        end
+    end
+
+    # delete!: Bool-returning, idempotent on MDB_NOTFOUND.
+    mktempdir() do dir
+        environment(dir) do env
+            start(env) do txn
+                open(txn) do dbi
+                    LMDB.put!(txn, dbi, "k1", "v1")
+                    LMDB.put!(txn, dbi, "k2", "v2")
+
+                    # Present key → true, returns and entry is gone.
+                    @test LMDB.delete!(txn, dbi, "k1") === true
+                    @test LMDB.tryget(txn, dbi, "k1", String) === nothing
+
+                    # Missing key → false, no exception.
+                    @test LMDB.delete!(txn, dbi, "ghost") === false
+                    @test LMDB.delete!(txn, dbi, "k1") === false  # already gone
+
+                    # Idempotent: a second delete on the same key is a no-op.
+                    @test LMDB.delete!(txn, dbi, "k2") === true
+                    @test LMDB.delete!(txn, dbi, "k2") === false
+                end
+            end
+        end
+    end
+
+    # replace! / pop!
+    mktempdir() do dir
+        environment(dir) do env
+            start(env) do txn
+                open(txn) do dbi
+                    # replace! on a missing key returns nothing and creates the entry.
+                    @test LMDB.replace!(txn, dbi, "k", "v1") === nothing
+                    @test LMDB.tryget(txn, dbi, "k", String) == "v1"
+
+                    # replace! on an existing key returns the old value.
+                    @test LMDB.replace!(txn, dbi, "k", "v2") == "v1"
+                    @test LMDB.tryget(txn, dbi, "k", String) == "v2"
+
+                    # pop! returns the value and deletes.
+                    @test LMDB.pop!(txn, dbi, "k", String) == "v2"
+                    @test LMDB.tryget(txn, dbi, "k", String) === nothing
+                    # pop! on a missing key returns nothing.
+                    @test LMDB.pop!(txn, dbi, "k", String) === nothing
+                end
+            end
+        end
     end
 end
