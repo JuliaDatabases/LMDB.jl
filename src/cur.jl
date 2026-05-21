@@ -86,9 +86,9 @@ arcopy(x) = x
 # buffer the next iteration will fill `mdb_key_ref` from; it must outlive
 # the next mdb_cursor_get call. Variants that don't seed a SET_RANGE
 # return `nothing` for key_buf.
-process_returns(::ReturnKeys{K}, mdb_key_ref, _) where K = arcopy(mbd_unpack(K, mdb_key_ref)), MDB_NEXT, nothing
-process_returns(::ReturnValues{V}, _, mdb_val_ref) where V = arcopy(mbd_unpack(V, mdb_val_ref)), MDB_NEXT, nothing
-process_returns(::ReturnBoth{K,V}, mdb_key_ref, mdb_val_ref) where {K,V} = arcopy((mbd_unpack(K, mdb_key_ref)) => arcopy(mbd_unpack(V, mdb_val_ref))), MDB_NEXT, nothing
+process_returns(::ReturnKeys{K}, mdb_key_ref, _) where K = arcopy(mdb_unpack(K, mdb_key_ref)), MDB_NEXT, nothing
+process_returns(::ReturnValues{V}, _, mdb_val_ref) where V = arcopy(mdb_unpack(V, mdb_val_ref)), MDB_NEXT, nothing
+process_returns(::ReturnBoth{K,V}, mdb_key_ref, mdb_val_ref) where {K,V} = arcopy((mdb_unpack(K, mdb_key_ref)) => arcopy(mdb_unpack(V, mdb_val_ref))), MDB_NEXT, nothing
 process_returns(::ReturnValueSize, _, mdb_val_ref) = mdb_val_ref[].mv_size, MDB_NEXT, nothing
 function init_values(d::LMDBIterator)
     if !isempty(d.prefix)
@@ -121,7 +121,7 @@ function Base.iterate(iter::LMDBIterator, refs)
     if ret == 0
         #Check if we are still in key prefix
         if !isempty(iter.prefix)
-            k = mbd_unpack(Vector{UInt8}, mdb_key_ref)
+            k = mdb_unpack(Vector{UInt8}, mdb_key_ref)
             if any(i->!=(i...),zip(iter.prefix, k))
                 return nothing
             end
@@ -146,19 +146,19 @@ function DirectoryLister(; sep = '/', lprefix=0)
 end
 
 function process_returns(l::DirectoryLister{K}, mdb_key_ref, _) where K
-    k = mbd_unpack(Vector{UInt8}, mdb_key_ref)
+    k = mdb_unpack(Vector{UInt8}, mdb_key_ref)
     nextsep = findnext(==(l.sep),k,l.istart)
     if nextsep === nothing
-        return arcopy(mbd_unpack(K, mdb_key_ref)), MDB_NEXT, nothing
+        return arcopy(mdb_unpack(K, mdb_key_ref)), MDB_NEXT, nothing
     else
         k = copy(k)
         resize!(k,nextsep)
         # Decode `k` under GC.@preserve — `_mdb_val_for(k)` takes a raw
-        # pointer into `k` that must outlive the `mbd_unpack` read.
+        # pointer into `k` that must outlive the `mdb_unpack` read.
         local kout
         GC.@preserve k begin
             kref = Ref(_mdb_val_for(k))
-            kout = arcopy(mbd_unpack(K, kref))
+            kout = arcopy(mdb_unpack(K, kref))
         end
         k[end] = k[end]+1
         # Return `k` as the next iteration's key_buf; `iterate` will
@@ -194,7 +194,7 @@ This function retrieves key/data pairs from the database.
 function get(cur::Cursor, key, ::Type{T}, op::MDB_cursor_op=MDB_SET_KEY) where T
     val_ref = Ref(MDBValue())
     mdb_cursor_get(cur, key, val_ref, op)
-    return mbd_unpack(T, val_ref)
+    return mdb_unpack(T, val_ref)
 end
 
 # Populate `key_ref` with `searchkey`'s data. Returns the heap-rooted argument
@@ -245,7 +245,7 @@ if the database is empty. Wraps `MDB_FIRST`.
 function seek!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_FIRST, nothing) || return nothing
-    return mbd_unpack(T, key_ref)
+    return mdb_unpack(T, key_ref)
 end
 
 """
@@ -257,7 +257,7 @@ matched key as `T`, or `nothing` if no such entry exists. Wraps `MDB_SET_KEY`.
 function seek!(cur::Cursor, searchkey, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_SET_KEY, searchkey) || return nothing
-    return mbd_unpack(T, key_ref)
+    return mdb_unpack(T, key_ref)
 end
 
 """
@@ -269,7 +269,7 @@ if the database is empty. Wraps `MDB_LAST`.
 function seek_last!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_LAST, nothing) || return nothing
-    return mbd_unpack(T, key_ref)
+    return mdb_unpack(T, key_ref)
 end
 
 """
@@ -281,7 +281,7 @@ Position the cursor at the smallest key `>= key`. Returns the matched key as
 function seek_range!(cur::Cursor, searchkey, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_SET_RANGE, searchkey) || return nothing
-    return mbd_unpack(T, key_ref)
+    return mdb_unpack(T, key_ref)
 end
 
 """
@@ -293,7 +293,7 @@ the cursor moved past the last entry. Wraps `MDB_NEXT`.
 function next!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_NEXT, nothing) || return nothing
-    return mbd_unpack(T, key_ref)
+    return mdb_unpack(T, key_ref)
 end
 
 """
@@ -305,7 +305,7 @@ if the cursor moved past the first entry. Wraps `MDB_PREV`.
 function prev!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_PREV, nothing) || return nothing
-    return mbd_unpack(T, key_ref)
+    return mdb_unpack(T, key_ref)
 end
 
 """
@@ -317,7 +317,7 @@ Return the key at the cursor's current position, decoded as `K`. Wraps
 function key(cur::Cursor, ::Type{K}=Vector{UInt8}) where K
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     mdb_cursor_get(cur, key_ref, val_ref, MDB_GET_CURRENT)
-    return mbd_unpack(K, key_ref)
+    return mdb_unpack(K, key_ref)
 end
 
 """
@@ -329,7 +329,7 @@ Return the value at the cursor's current position, decoded as `V`. Wraps
 function value(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     mdb_cursor_get(cur, key_ref, val_ref, MDB_GET_CURRENT)
-    return mbd_unpack(V, val_ref)
+    return mdb_unpack(V, val_ref)
 end
 
 """
@@ -341,7 +341,7 @@ Return the (key => value) pair at the cursor's current position. Wraps
 function item(cur::Cursor, ::Type{K}=Vector{UInt8}, ::Type{V}=Vector{UInt8}) where {K,V}
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     mdb_cursor_get(cur, key_ref, val_ref, MDB_GET_CURRENT)
-    return mbd_unpack(K, key_ref) => mbd_unpack(V, val_ref)
+    return mdb_unpack(K, key_ref) => mdb_unpack(V, val_ref)
 end
 
 """
@@ -354,7 +354,7 @@ value as `V`, or `nothing` if the current entry has no duplicates. Wraps
 function seek_first_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_FIRST_DUP, nothing) || return nothing
-    return mbd_unpack(V, val_ref)
+    return mdb_unpack(V, val_ref)
 end
 
 """
@@ -367,7 +367,7 @@ value as `V`, or `nothing` if the current entry has no duplicates. Wraps
 function seek_last_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_LAST_DUP, nothing) || return nothing
-    return mbd_unpack(V, val_ref)
+    return mdb_unpack(V, val_ref)
 end
 
 """
@@ -380,7 +380,7 @@ as `V`, or `nothing` if there are no more duplicates of this key. Wraps
 function next_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_NEXT_DUP, nothing) || return nothing
-    return mbd_unpack(V, val_ref)
+    return mdb_unpack(V, val_ref)
 end
 
 """
@@ -393,7 +393,7 @@ as `V`, or `nothing` if there are no earlier duplicates. Wraps
 function prev_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_PREV_DUP, nothing) || return nothing
-    return mbd_unpack(V, val_ref)
+    return mdb_unpack(V, val_ref)
 end
 
 """
@@ -406,7 +406,7 @@ key. Wraps `MDB_NEXT_NODUP`.
 function next_nodup!(cur::Cursor, ::Type{K}=Vector{UInt8}) where K
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_NEXT_NODUP, nothing) || return nothing
-    return mbd_unpack(K, key_ref)
+    return mdb_unpack(K, key_ref)
 end
 
 """
@@ -418,7 +418,7 @@ Move to the last entry of the previous key. Returns the new key as `K`, or
 function prev_nodup!(cur::Cursor, ::Type{K}=Vector{UInt8}) where K
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_PREV_NODUP, nothing) || return nothing
-    return mbd_unpack(K, key_ref)
+    return mdb_unpack(K, key_ref)
 end
 
 """

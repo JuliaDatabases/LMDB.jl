@@ -139,7 +139,7 @@ end
 function get(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
     val_ref = Ref(MDBValue())
     mdb_get(txn, dbi, key, val_ref)
-    return mbd_unpack(T, val_ref)
+    return mdb_unpack(T, val_ref)
 end
 
 """Get an item from a database, returning `nothing` if `key` is not present.
@@ -149,7 +149,7 @@ function tryget(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
     ret = unchecked_mdb_get(txn, dbi, key, val_ref)
     ret == MDB_NOTFOUND && return nothing
     iszero(ret) || throw(LMDBError(ret))
-    return mbd_unpack(T, val_ref)
+    return mdb_unpack(T, val_ref)
 end
 
 """Get an item from a database, returning `default` if `key` is not present.

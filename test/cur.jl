@@ -84,21 +84,21 @@ module LMDB_CUR
                         # walk over everything
                         ks = String[]
                         LMDB.walk(cur) do k_ref, _
-                            push!(ks, LMDB.mbd_unpack(String, k_ref))
+                            push!(ks, LMDB.mdb_unpack(String, k_ref))
                         end
                         @test ks == ["a", "b", "c"]
 
                         # walk from a starting key
                         ks2 = String[]
                         LMDB.walk(cur; from="b") do k_ref, _
-                            push!(ks2, LMDB.mbd_unpack(String, k_ref))
+                            push!(ks2, LMDB.mdb_unpack(String, k_ref))
                         end
                         @test ks2 == ["b", "c"]
 
                         # walk from a key past the last entry — no callbacks.
                         ks3 = String[]
                         LMDB.walk(cur; from="z") do k_ref, _
-                            push!(ks3, LMDB.mbd_unpack(String, k_ref))
+                            push!(ks3, LMDB.mdb_unpack(String, k_ref))
                         end
                         @test isempty(ks3)
 
@@ -136,7 +136,7 @@ module LMDB_CUR
 
                         ks = String[]
                         LMDB.walk(cur) do k_ref, _
-                            push!(ks, LMDB.mbd_unpack(String, k_ref))
+                            push!(ks, LMDB.mdb_unpack(String, k_ref))
                         end
                         @test isempty(ks)
                     end

@@ -108,7 +108,7 @@ function Base.get(d::LMDBDict{K,V}, key, default) where {K,V}
         if ret == MDB_NOTFOUND
             return default
         elseif ret == Cint(0)
-            return mbd_unpack(V, mdb_val_ref)
+            return mdb_unpack(V, mdb_val_ref)
         else
             throw(LMDB.LMDBError(ret))
         end
@@ -123,7 +123,7 @@ function Base.get!(d::LMDBDict{K,V}, key, default) where {K,V}
             d[key] = default
             return default
         elseif ret == Cint(0)
-            return mbd_unpack(V, mdb_val_ref)
+            return mdb_unpack(V, mdb_val_ref)
         else
             throw(LMDB.LMDBError(ret))
         end
@@ -137,7 +137,7 @@ function Base.get(f::F, d::LMDBDict{K,V}, key) where {K,V,F<:Union{Function, Typ
         if ret == MDB_NOTFOUND
             return f()
         elseif ret == Cint(0)
-            return mbd_unpack(V, mdb_val_ref)
+            return mdb_unpack(V, mdb_val_ref)
         else
             throw(LMDB.LMDBError(ret))
         end
@@ -153,7 +153,7 @@ function Base.get!(f::F, d::LMDBDict{K,V}, key) where {K,V,F<:Union{Function, Ty
             d[key] = default
             return default
         elseif ret == Cint(0)
-            return mbd_unpack(V, mdb_val_ref)
+            return mdb_unpack(V, mdb_val_ref)
         else
             throw(LMDB.LMDBError(ret))
         end

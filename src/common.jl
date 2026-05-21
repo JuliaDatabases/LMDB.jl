@@ -114,11 +114,6 @@ function _mdb_unpack(::Type{T}, mdb_val::MDB_val) where {T}
     unsafe_load(convert(Ptr{T}, mdb_val.mv_data))
 end
 
-# Back-compat alias for the long-standing typo. Will be dropped in a
-# future release once nothing in the package still calls it.
-const mbd_unpack = mdb_unpack
-const _mbd_unpack = _mdb_unpack
-
 
 """Return the LMDB library version and version information
 
