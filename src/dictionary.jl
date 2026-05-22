@@ -185,11 +185,7 @@ end
 
 function Base.delete!(d::LMDBDict{K}, k) where K
     txn_dbi_do(d) do txn, dbi
-        try
-            LMDB.delete!(txn, dbi, convert(K, k))
-        catch e
-            e isa LMDBError && LMDB.is_notfound(e) || rethrow()
-        end
+        LMDB.delete!(txn, dbi, convert(K, k))
     end
     return d
 end

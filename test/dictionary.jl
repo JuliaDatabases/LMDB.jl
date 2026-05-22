@@ -37,6 +37,9 @@ mktempdir() do dir
     # delete! / pop! / KeyError on missing.
     delete!(d, "z")
     @test !haskey(d, "z")
+    # delete! of a missing key is a no-op, matching Base.delete!(::Dict).
+    @test delete!(d, "z") === d
+    @test delete!(d, "never-existed") === d
     @test_throws KeyError d["z"]
     @test_throws KeyError pop!(d, "z")
     @test pop!(d, "z", :missing) === :missing
