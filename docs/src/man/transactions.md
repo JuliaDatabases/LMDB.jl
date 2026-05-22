@@ -12,7 +12,7 @@ time per environment).
 
 ```julia
 txn = start(env)                          # read-write
-txn = start(env; flags = MDB_RDONLY)      # read-only
+txn = start(env; flags = LMDB.MDB_RDONLY)      # read-only
 ```
 
 LMDB can hold one writer plus an unlimited number of readers
@@ -48,7 +48,7 @@ Read-only txns are cheap to start and stop, but in a tight loop the
 pair is cheaper still:
 
 ```julia
-txn = start(env; flags = MDB_RDONLY)
+txn = start(env; flags = LMDB.MDB_RDONLY)
 for batch in batches
     open(txn) do dbi
         for k in batch
@@ -110,13 +110,13 @@ The most common patterns:
 
 ```julia
 # Hot read path: many small lookups, no writes
-start(env; flags = MDB_RDONLY) do txn ... end
+start(env; flags = LMDB.MDB_RDONLY) do txn ... end
 
 # Bulk import: single transaction across many writes (atomic, fast)
 start(env) do txn ... end
 
 # Long-running reader (e.g. background scrubber): reset + renew loop
-txn = start(env; flags = MDB_RDONLY)
+txn = start(env; flags = LMDB.MDB_RDONLY)
 while running
     ...
     reset(txn); renew(txn)

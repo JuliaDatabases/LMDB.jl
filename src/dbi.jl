@@ -1,3 +1,6 @@
+export DBI, tryget, put_reserved!
+@public flags
+
 """
 A handle for an individual database in the DB environment.
 """

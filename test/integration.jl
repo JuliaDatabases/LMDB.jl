@@ -1,6 +1,3 @@
-using LMDB
-using Test
-
 # cuTile-shaped framed value: 8-byte LE atime prefix, then the payload.
 # Defined at file scope to demonstrate the `Base.read(::IO, …)`
 # extension contract and to regression-guard it (a downstream package
@@ -34,7 +31,7 @@ mktempdir() do dir
     env = Environment(dir;
                       mapsize    = 1 << 28,
                       maxreaders = 64,
-                      flags      = MDB_NOTLS | MDB_NORDAHEAD)
+                      flags      = LMDB.MDB_NOTLS | LMDB.MDB_NORDAHEAD)
     try
         dbi, psize = start(env) do txn
             d = open(txn)
@@ -53,7 +50,7 @@ mktempdir() do dir
         # cuTile's eviction scan: zero allocations beyond the per-entry
         # tuple.
         entries = Tuple{String, Int}[]
-        start(env; flags = MDB_RDONLY) do txn
+        start(env; flags = LMDB.MDB_RDONLY) do txn
             LMDB.open(txn, dbi) do cur
                 LMDB.walk(cur) do k_ref, v_ref
                     kv = k_ref[]; vv = v_ref[]
@@ -67,7 +64,7 @@ mktempdir() do dir
         @test all(e -> e[2] == sizeof("value1"), entries)
 
         # tryget vs is_notfound — common cuTile-shaped read path.
-        start(env; flags = MDB_RDONLY) do txn
+        start(env; flags = LMDB.MDB_RDONLY) do txn
             @test LMDB.tryget(txn, dbi, "key3", String) == "value3"
             @test LMDB.tryget(txn, dbi, "ghost", String) === nothing
         end
@@ -82,7 +79,7 @@ mktempdir() do dir
             end
         end
         @test deleted == 2
-        start(env; flags = MDB_RDONLY) do txn
+        start(env; flags = LMDB.MDB_RDONLY) do txn
             @test LMDB.tryget(txn, dbi, "key1", String) === nothing
             @test LMDB.tryget(txn, dbi, "key2", String) == "value2"
             @test LMDB.tryget(txn, dbi, "key3", String) === nothing
@@ -96,7 +93,7 @@ mktempdir() do dir
         start(env) do txn
             LMDB.put!(txn, dbi, "framed", pack_atimed(atime, payload))
         end
-        start(env; flags = MDB_RDONLY) do txn
+        start(env; flags = LMDB.MDB_RDONLY) do txn
             @test LMDB.tryget(txn, dbi, "framed", AtimedBlob) == payload
             @test LMDB.tryget(txn, dbi, "ghost",  AtimedBlob) === nothing
         end

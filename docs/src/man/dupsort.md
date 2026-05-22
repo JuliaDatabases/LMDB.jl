@@ -13,7 +13,7 @@ values" patterns.
 ```julia
 env = Environment("/tmp/edges"; mapsize = 1 << 30, maxdbs = 1)
 start(env) do txn
-    dbi = open(txn, "edges"; flags = MDB_CREATE | MDB_DUPSORT)
+    dbi = open(txn, "edges"; flags = LMDB.MDB_CREATE | LMDB.MDB_DUPSORT)
     put!(txn, dbi, "a", "b")
     put!(txn, dbi, "a", "c")
     put!(txn, dbi, "a", "d")

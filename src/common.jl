@@ -1,3 +1,6 @@
+export isflagset
+@public version, MDBValueIO
+
 # Zero-valued `MDB_val` sentinels, used as out-parameters and for the
 # "no value" form of `delete!`. Constructing a non-empty `MDB_val` from a
 # Julia value requires taking a raw pointer into that value, which is only

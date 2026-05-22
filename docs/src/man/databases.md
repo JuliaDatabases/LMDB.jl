@@ -13,7 +13,7 @@ to `Environment` to support multiple named sub-databases.
 ```julia
 dbi = open(txn)                      # main (unnamed) DB
 dbi = open(txn, "users")             # named sub-DB; needs maxdbs >= 1
-dbi = open(txn, "edges"; flags = MDB_CREATE | MDB_DUPSORT)
+dbi = open(txn, "edges"; flags = LMDB.MDB_CREATE | LMDB.MDB_DUPSORT)
 ```
 
 The do-block form closes the DBI on the way out:
@@ -69,7 +69,7 @@ tryget(txn, dbi, key,    UInt64)            # → Union{UInt64, Nothing}
 
 ```julia
 put!(txn, dbi, key, val)
-put!(txn, dbi, key, val; flags = MDB_NOOVERWRITE)
+put!(txn, dbi, key, val; flags = LMDB.MDB_NOOVERWRITE)
 delete!(txn, dbi, key)                       # → Bool: true if removed
 delete!(txn, dbi, key, val)                  # DUPSORT: delete one specific dup
 replace!(txn, dbi, key, val)                 # atomic put-and-return-old
@@ -89,7 +89,7 @@ Useful write flags:
 start(env) do txn
     open(txn) do dbi
         for (k, v) in sorted_pairs
-            put!(txn, dbi, k, v; flags = MDB_APPEND)
+            put!(txn, dbi, k, v; flags = LMDB.MDB_APPEND)
         end
     end
 end
@@ -131,8 +131,8 @@ live = (s.branch_pages + s.leaf_pages + s.overflow_pages) * s.psize
 ## Dropping a database
 
 ```julia
-drop(txn, dbi)                 # empty the DB (handle still valid)
-drop(txn, dbi; delete = true)  # delete the DB and close the handle
+LMDB.drop(txn, dbi)                 # empty the DB (handle still valid)
+LMDB.drop(txn, dbi; delete = true)  # delete the DB and close the handle
 ```
 
 For named sub-DBs, `delete = true` removes the entry from the env's

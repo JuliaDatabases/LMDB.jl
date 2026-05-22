@@ -1,7 +1,12 @@
-using Test
+using Test, LMDB
 
-@testset "LMDB" for t in ["common", "liblmdb", "env", "dbi", "cur", "dupsort",
-                          "dict", "integration"]
-    fp = "$t.jl"
-    include(fp)
+@testset "LMDB" verbose=true begin
+    include("common.jl")
+    include("liblmdb.jl")
+    include("env.jl")
+    include("dbi.jl")
+    include("cur.jl")
+    include("dupsort.jl")
+    include("dict.jl")
+    include("integration.jl")
 end

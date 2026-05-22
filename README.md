@@ -56,7 +56,7 @@ close(d)
 using LMDB
 
 env = Environment("/tmp/mydb"; mapsize = 1<<30, maxreaders = 510,
-                               flags   = MDB_NOTLS | MDB_NORDAHEAD)
+                               flags   = LMDB.MDB_NOTLS | LMDB.MDB_NORDAHEAD)
 try
     start(env) do txn                                  # auto-commits/aborts
         open(txn) do dbi
@@ -70,7 +70,7 @@ try
     end
 
     # Cursor walk over the LMDB-owned mmap (zero-copy access).
-    start(env; flags = MDB_RDONLY) do txn
+    start(env; flags = LMDB.MDB_RDONLY) do txn
         open(txn) do dbi
             open(txn, dbi) do cur
                 LMDB.walk(cur, String, String) do k, v
@@ -87,7 +87,8 @@ end
 The package decodes `String`, `Vector{T}` for any bitstype `T`, and the
 primitive numeric types out of the box. To plug in a custom representation,
 define a `Base.read(io::IO, ::Type{T})` method; it will be picked up by `tryget`,
-`get`, `walk(f, cur, K, V)`, and the cursor accessors `key`/`value`/`item`.
+`get`, `walk(f, cur, K, V)`, and the cursor accessors
+`LMDB.key`/`LMDB.value`/`LMDB.item`.
 Status-code matchers live on `LMDBError`:
 
 ```julia

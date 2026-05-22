@@ -1,6 +1,3 @@
-using LMDB
-using Test
-
 @testset "Environment" begin
 
 # Open environment
@@ -65,13 +62,13 @@ end
 mktempdir() do dir
     big = Csize_t(8) * 1024^3
     env = Environment(dir; mapsize = big, maxreaders = 42, maxdbs = 4,
-                      flags = MDB_NOSYNC | MDB_NOTLS)
+                      flags = LMDB.MDB_NOSYNC | LMDB.MDB_NOTLS)
     try
         @test isopen(env)
         @test env[:Readers] == 42
         @test info(env).mapsize == big
-        @test isflagset(env[:Flags], Cuint(MDB_NOSYNC))
-        @test isflagset(env[:Flags], Cuint(MDB_NOTLS))
+        @test isflagset(env[:Flags], Cuint(LMDB.MDB_NOSYNC))
+        @test isflagset(env[:Flags], Cuint(LMDB.MDB_NOTLS))
     finally
         close(env)
     end

@@ -1,6 +1,3 @@
-using LMDB
-using Test
-
 @testset "liblmdb" begin
 
 # @checked: status-returning bindings auto-throw an LMDBError on a
