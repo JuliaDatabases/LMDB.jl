@@ -5,8 +5,8 @@ CurrentModule = LMDB
 ```
 
 `LMDBDict{K,V}` is a persistent `AbstractDict{K,V}` backed by a single
-LMDB environment + the default DBI. It is the simplest way to use LMDB
-from Julia: open it, treat it like a `Dict`, close it.
+LMDB environment plus the default DBI. Open it, treat it like a `Dict`,
+close it.
 
 ## Construction
 
@@ -132,14 +132,13 @@ audits without `stat`.
 
 ## When to drop down
 
-Reach for the explicit Julia API (next chapters) when:
+Reach for the explicit Julia wrappers (next chapters) when:
 
-- you need **multi-key atomicity**: a single transaction grouping more
-  than one `put!`/`delete!`,
-- you want to **stream** without eagerly building a `Vector{Pair{K,V}}`
+- you need a single transaction grouping more than one `put!`/`delete!`,
+- you want to stream rather than eagerly build a `Vector{Pair{K,V}}`
   (see [Cursors](@ref) and `walk`),
-- you need **multiple named databases** in one env (LMDBDict only
-  exposes the default unnamed DB),
-- you're using `MDB_DUPSORT` (multiple values per key — see
+- you want multiple named databases in one env (`LMDBDict` only exposes
+  the default unnamed DB),
+- you're using `MDB_DUPSORT` for multiple values per key (see
   [Duplicate-sort databases](@ref)),
 - or you want zero-copy reads against the mmap.

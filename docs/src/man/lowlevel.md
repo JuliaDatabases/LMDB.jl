@@ -6,12 +6,12 @@ CurrentModule = LMDB
 
 The C API is the raw `ccall` interface to `liblmdb`. It is
 public-but-unexported: refer to it as `LMDB.mdb_env_create`,
-`LMDB.MDB_NOTLS`, `LMDB.MDB_val`. Use this layer when you need to
+`LMDB.MDB_NOTLS`, `LMDB.MDB_val`. Reach for it when you need to
 integrate with a custom data layout, branch on a status code that the
-Julia API doesn't surface, or skip allocations on a hot path.
+Julia wrappers don't surface, or skip allocations on a hot path.
 
 For the full inventory, see [the API reference](@ref API-LowLevel). What
-follows is a tour of how the layer is shaped.
+follows is a tour of how the surface is shaped.
 
 ## The auto-throwing convention
 
@@ -46,14 +46,14 @@ Bindings that don't return a status (`mdb_strerror`, `mdb_version`,
 ## ccall glue: passing values to `Ptr{MDB_val}`
 
 LMDB exchanges keys and values through a `Ptr{MDB_val}` argument: a
-two-field struct of `(size, data_ptr)` plus an out-pointer for the
+two-field struct of `(size, data_ptr)`, plus an out-pointer for the
 ccall to fill in. LMDB.jl ships `Base.cconvert` overloads on
-`Ptr{MDB_val}` that route any of `String`, `AbstractArray` (with
-bitstype element type), `Base.RefValue` over a bitstype, any bitstype
-scalar, or a pre-built `Ref{MDB_val}` (used as an out-param) into a
-self-rooted argument that `ccall`'s automatic `GC.@preserve` keeps alive
-across the call. Callers never need to write `Ref(...)` or
-`GC.@preserve` for input arguments.
+`Ptr{MDB_val}` for `String`, `AbstractArray` (with bitstype element
+type), `Base.RefValue` over a bitstype, any bitstype scalar, and a
+pre-built `Ref{MDB_val}` (used as an out-param). Each routes through a
+self-rooted argument that `ccall`'s automatic `GC.@preserve` keeps
+alive across the call, so callers don't have to write `Ref(...)` or
+`GC.@preserve` for input arguments themselves.
 
 ```julia
 import LMDB
@@ -93,9 +93,9 @@ The package ships these defaults:
 | `Vector{E}` for bitstype `E` | one alloc + `unsafe_copyto!`; the buffer is Julia-owned |
 | any bitstype scalar `T` | one `unsafe_load` of `sizeof(T)` bytes — zero allocations |
 
-Custom representations are added by overloading `Base.read` on the
-abstract `IO` (the idiomatic Julia form — keeps the decoder portable
-to other byte sources):
+Add custom representations by overloading `Base.read` on the abstract
+`IO`. This is the idiomatic Julia form and keeps the decoder portable
+to other byte sources:
 
 ```julia
 struct AtimedBlob end
@@ -115,31 +115,31 @@ Base.read(io::IO, ::Type{T}) = read!(io, Ref{T}())[]
 ```
 
 This is the analogue of heed's `BytesDecode<'txn>` trait. Every typed
-read in the Julia API — `tryget`, `get`, `key`, `value`, `item`, typed
-`walk`, `pop!`, `replace!` — funnels through `read(::MDBValueIO, T)`,
-so a single method opt-in is enough to make a custom representation
-usable across the package. Because `MDBValueIO <: IO`, all the standard
-`Base` IO primitives (`position`, `seek`, `skip`, `read(io)`,
-`read(io, n::Integer)`, `read!(io, A)`, `bytesavailable`, `eof`) work
-out of the box, which makes structured framed-value decoders read
-exactly like any other Julia parser.
+read in the Julia wrappers (`tryget`, `get`, `key`, `value`, `item`,
+typed `walk`, `pop!`, `replace!`) goes through `read(::MDBValueIO, T)`,
+so one method definition makes a custom representation usable across
+the package. Because `MDBValueIO <: IO`, the standard `Base` IO
+primitives (`position`, `seek`, `skip`, `read(io)`, `read(io,
+n::Integer)`, `read!(io, A)`, `bytesavailable`, `eof`) work out of the
+box, so structured framed-value decoders read exactly like any other
+Julia parser.
 
 ## Memory ownership rules
 
 - The `mv_data` pointer of an `MDB_val` produced by a *read* is into
-  LMDB's mmap. It is **valid only for the producing transaction's
-  lifetime** — copy out anything you want to retain past commit.
-  The default `Vector{E}` and `String` `read(::MDBValueIO, T)` methods
+  LMDB's mmap. It is valid only for the producing transaction's
+  lifetime; copy out anything you want to retain past commit. The
+  default `Vector{E}` and `String` `read(::MDBValueIO, T)` methods
   always copy; custom decoders are responsible for doing the same.
 - The `mv_data` pointer of an `MDB_val` produced by a `MDB_RESERVE`
-  *write* points into the LMDB write buffer and is **valid only inside
-  the surrounding write transaction**. [`put_reserved!`](@ref) wraps
+  *write* points into the LMDB write buffer and is valid only inside
+  the surrounding write transaction. [`put_reserved!`](@ref) wraps
   this; don't escape its `buf` argument.
 
 ## Unwrapped LMDB features
 
 A few LMDB features are reachable only through the C API because the
-Julia API deliberately doesn't include them:
+Julia wrappers deliberately don't include them:
 
 - **Custom comparators.** `LMDB.mdb_set_compare` /
   `LMDB.mdb_set_dupsort` accept a `MDB_cmp_func` callback. Use

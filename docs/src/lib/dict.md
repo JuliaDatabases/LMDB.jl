@@ -1,6 +1,6 @@
 # [Dictionary interface](@id API-Dict)
 
-The high-level abstraction: a single `AbstractDict{K,V}` over an LMDB environment.
+The high-level interface: a single `AbstractDict{K,V}` over an LMDB environment.
 
 ```@meta
 CurrentModule = LMDB
@@ -12,19 +12,20 @@ CurrentModule = LMDB
 LMDBDict
 ```
 
-`LMDBDict` is `<: AbstractDict{K,V}`, so it transparently picks up
-`Base`'s generic methods on top of the lookup/mutation primitives:
+`LMDBDict <: AbstractDict{K,V}`, so it picks up `Base`'s generic
+methods on top of the lookup/mutation primitives.
 
-- **Reads.** `getindex`, `haskey`, `get`, `get!`, `length`, `isempty`,
-  `iterate`, `keys`, `values`, `pairs`. All defined on `Base`-side
-  signatures and dispatched into LMDB; `getindex` and `pop!` throw
-  `KeyError` on miss to match `Base.Dict`.
-- **Writes.** `setindex!`, `delete!`, `pop!`, `empty!`. `delete!`
-  silently no-ops on a missing key (matching `Base.delete!`'s "if any"
-  contract).
-- **Generic.** Everything `AbstractDict` derives — `merge!`, `merge`,
-  `mergewith!`, `filter!`, `filter`, `==`, `isequal`, `hash`,
-  `in(::Pair, d)`, `copy(d)` — applies for free.
+Reads (`getindex`, `haskey`, `get`, `get!`, `length`, `isempty`,
+`iterate`, `keys`, `values`, `pairs`) are dispatched into LMDB.
+`getindex` and `pop!` throw `KeyError` on miss to match `Base.Dict`.
+
+Writes (`setindex!`, `delete!`, `pop!`, `empty!`) likewise. `delete!`
+silently no-ops on a missing key, matching `Base.delete!`'s "if any"
+contract.
+
+Everything `AbstractDict` derives — `merge!`, `merge`, `mergewith!`,
+`filter!`, `filter`, `==`, `isequal`, `hash`, `in(::Pair, d)`,
+`copy(d)` — comes along for free.
 
 `LMDBDict` iterates in lexicographic key order, which is stronger than
 `Base.Dict`'s no-order promise.

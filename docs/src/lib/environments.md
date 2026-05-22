@@ -4,9 +4,9 @@
 CurrentModule = LMDB
 ```
 
-An `Environment` wraps an LMDB env handle (`Ptr{MDB_env}`). It is the
-top of the handle hierarchy — every transaction, database, and cursor
-ultimately lives inside one env.
+An `Environment` wraps an LMDB env handle (`Ptr{MDB_env}`). It sits at
+the top of the handle hierarchy: every transaction, database, and
+cursor lives inside one env.
 
 ## Construction
 

@@ -23,25 +23,25 @@ export
     # commonly-needed write flags
     MDB_NOOVERWRITE, MDB_NODUPDATA, MDB_APPEND, MDB_RESERVE,
 
-    # Julia API — environment
+    # Julia wrappers — environment
     Environment, create, environment,
     sync, set!, unset!, info, stat, path, isopen, isflagset,
     reader_check, reader_list,
 
-    # Julia API — transaction
+    # Julia wrappers — transaction
     Transaction, start, abort, commit, reset, renew,
 
-    # Julia API — database (DBI)
+    # Julia wrappers — database (DBI)
     DBI, drop, get, put!, put_reserved!, delete!, tryget, replace!,
 
-    # Julia API — cursor
+    # Julia wrappers — cursor
     Cursor, count, transaction, database,
     seek!, seek_last!, seek_range!, next!, prev!,
     key, value, item, walk,
     seek_first_dup!, seek_last_dup!,
     next_dup!, prev_dup!, next_nodup!, prev_nodup!,
 
-    # High-level abstractions
+    # High-level interface
     LMDBDict
 
 # ---------------------------------------------------------------------------
@@ -106,9 +106,9 @@ is_map_full
 # `unchecked_*` companion (returns the raw `Cint` for callers that need to
 # inspect it, e.g. branching on `MDB_NOTFOUND`).
 #
-# Use as `LMDB.mdb_env_create`, `LMDB.MDB_NOTLS`, `LMDB.MDB_val`. Mostly
-# relevant to power users; the Julia API (`Environment`, `Transaction`, …) is
-# the recommended surface.
+# Use as `LMDB.mdb_env_create`, `LMDB.MDB_NOTLS`, `LMDB.MDB_val`. The Julia
+# wrappers (`Environment`, `Transaction`, …) wrap these and are what most
+# callers should reach for.
 # ---------------------------------------------------------------------------
 
 include("checked.jl")
@@ -123,15 +123,15 @@ is_keyexist(err::LMDBError) = err.code == MDB_KEYEXIST
 is_map_full(err::LMDBError) = err.code == MDB_MAP_FULL
 
 # ---------------------------------------------------------------------------
-# ccall glue between the C API and the Julia API: `MDBValue`, `MDBArg`, and
-# the `MDBValueIO <: IO` extension point used to plug in custom decoders via
+# ccall glue between the C API and the Julia wrappers: `MDBValue`, `MDBArg`,
+# and the `MDBValueIO <: IO` wrapper used to plug in custom decoders via
 # `Base.read(io, T)`.
 # ---------------------------------------------------------------------------
 
 include("common.jl")
 
 # ---------------------------------------------------------------------------
-# Julia API — Julian wrappers around the raw bindings.
+# Julia wrappers around the raw bindings.
 # ---------------------------------------------------------------------------
 
 include("env.jl")
@@ -140,7 +140,7 @@ include("dbi.jl")
 include("cur.jl")
 
 # ---------------------------------------------------------------------------
-# High-level abstractions — `LMDBDict`.
+# High-level interface — `LMDBDict`.
 # ---------------------------------------------------------------------------
 
 include("dicts.jl")

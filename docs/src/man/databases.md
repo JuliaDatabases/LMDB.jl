@@ -62,8 +62,8 @@ tryget(txn, dbi, key,    Vector{Float32})   # → Union{Vector{Float32}, Nothing
 tryget(txn, dbi, key,    UInt64)            # → Union{UInt64, Nothing}
 ```
 
-`tryget` is the workhorse: it inspects the raw status code and
-swallows `MDB_NOTFOUND` cheaply, without throwing.
+`tryget` is the cheap one: it inspects the raw status code and swallows
+`MDB_NOTFOUND` without throwing.
 
 ## Writes
 
@@ -95,8 +95,8 @@ start(env) do txn
 end
 ```
 
-`replace!` and `pop!` perform the read-modify pair inside the same
-transaction — no time-of-check / time-of-use gap.
+`replace!` and `pop!` do the read-modify pair inside the same
+transaction, so there is no time-of-check / time-of-use gap.
 
 ## `put_reserved!` — write directly into the mmap
 
@@ -111,12 +111,12 @@ put_reserved!(txn, dbi, key, sizeof(header) + length(payload)) do buf
 end
 ```
 
-`buf` is an `unsafe_wrap` over the LMDB write buffer; it is **only
-valid inside the callback** (and only inside the surrounding write
-txn). Don't escape it.
+`buf` is an `unsafe_wrap` over the LMDB write buffer. It is only valid
+inside the callback, and only inside the surrounding write txn; don't
+escape it.
 
-`put_reserved!` is the equivalent of heed's `Database::put_reserved`.
-It is incompatible with DUPSORT.
+`put_reserved!` is the equivalent of heed's `Database::put_reserved`,
+and is incompatible with DUPSORT.
 
 ## Stats
 

@@ -5,10 +5,10 @@ CurrentModule = LMDB
 ```
 
 By default each key in an LMDB database has a single value. Opening a
-DB with `MDB_DUPSORT` instead allows **multiple values per key**, kept
-in sorted order. This is LMDB's answer to inverted indexes,
-many-to-many edges, time-series buckets, and any "key → set of values"
-pattern.
+DB with `MDB_DUPSORT` instead allows multiple values per key, kept in
+sorted order. This is what LMDB offers for inverted indexes,
+many-to-many edges, time-series buckets, and other "key → set of
+values" patterns.
 
 ```julia
 env = Environment("/tmp/edges"; mapsize = 1 << 30, maxdbs = 1)
@@ -39,9 +39,9 @@ DUPSORT wins when:
 - you want range queries within a key's values
   (`seek_range!` style).
 
-It loses if you need **fast aggregate reads of every value at a key** —
-that's where `MDB_DUPFIXED` (fixed-size duplicates) shines because
-the values are stored contiguously and can be returned in batches.
+It loses if you need fast aggregate reads of every value at a key. For
+that case, use `MDB_DUPFIXED` (fixed-size duplicates), which stores the
+values contiguously and returns them in batches.
 
 ## Navigation
 

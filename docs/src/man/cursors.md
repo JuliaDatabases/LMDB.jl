@@ -5,7 +5,7 @@ CurrentModule = LMDB
 ```
 
 A `Cursor` is a positioned iterator over a `DBI`. Use it for ordered
-scans, range queries, and any time you want to amortise the per-lookup
+scans, range queries, or when you want to amortise the per-lookup
 overhead of `mdb_get` across many keys.
 
 ## Opening a cursor
@@ -109,13 +109,13 @@ Pass `from = key` to start at the smallest entry `≥ key` (i.e.
 The callback can return `false` to stop iteration; any other return
 (including `nothing`) continues.
 
-The untyped form is the right tool when you want to inspect raw byte
-sizes, copy slices, or feed a custom decoder — the data pointers are
-into LMDB's mmap and are valid only inside the callback (and only for
-the surrounding txn). The typed form is the iteration analogue of
+Use the untyped form when you want to inspect raw byte sizes, copy
+slices, or feed a custom decoder; the data pointers are into LMDB's
+mmap and are valid only inside the callback (and only for the
+surrounding txn). The typed form is the iteration analogue of
 `tryget(..., T)` and works for any `T` for which `Base.read(io::IO,
 ::Type{T})` (or `Base.read(io::LMDB.MDBValueIO, ::Type{T})`) is
-defined (see [Custom value decoding](@ref)).
+defined; see [Custom value decoding](@ref).
 
 ## Cursor mutation
 
@@ -140,8 +140,8 @@ through `Base.read(io::IO, ::Type{T})` against an
 primitive numeric types (`Int8`/…/`Float64`, `Bool`, `Char`, `Ptr`),
 `String`, and (added by this package) `Vector{E}` for any bitstype `E`.
 
-For everything else — including `isbitstype` structs and framed
-values — define a single `Base.read` method on the abstract `IO`:
+For everything else, including `isbitstype` structs and framed
+values, define a single `Base.read` method on the abstract `IO`:
 
 ```julia
 struct PrefixedBlob end
@@ -159,13 +159,13 @@ walk(cur, String, PrefixedBlob) do k, blob
 end
 ```
 
-`MDBValueIO <: IO` so all the usual `Base` IO primitives — `position`,
-`seek`, `skip`, `read(io, n::Integer)`, `read(io, T)`, `read!(io, A)`,
-`bytesavailable`, `eof` — work as expected. This makes structured
-framed-value decoders read like any other Julia binary parser, and is
-the analogue of heed's `BytesDecode<'txn>` trait — but expressed
-through Julia's existing IO extension point rather than a bespoke
-trait, so the same decoder works against any byte source.
+`MDBValueIO <: IO`, so all the usual `Base` IO primitives work on it:
+`position`, `seek`, `skip`, `read(io, n::Integer)`, `read(io, T)`,
+`read!(io, A)`, `bytesavailable`, `eof`. Structured framed-value
+decoders end up reading like any other Julia binary parser, and the
+same decoder works against any byte source. This is the analogue of
+heed's `BytesDecode<'txn>` trait, expressed through Julia's existing IO
+extension point rather than a bespoke trait.
 
 ## Reset and renew
 

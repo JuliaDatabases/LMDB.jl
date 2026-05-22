@@ -12,31 +12,29 @@ space.
 using Pkg; Pkg.add("LMDB")
 ```
 
-## Three layers of abstraction
+## Using LMDB.jl
 
-LMDB.jl exposes three layers, each with a clear consumer:
+LMDB.jl exposes the same database through three surfaces:
 
-| Layer | Surface | When to use |
-|-------|---------|-------------|
-| **High-level abstractions** | `LMDBDict <: AbstractDict{K,V}` | "I want a persistent `Dict`." |
-| **Julia API** | `Environment`, `Transaction`, `DBI`, `Cursor` | Julian wrappers with explicit transactions and cursors. The recommended surface for most code. |
-| **C API** | `LMDB.mdb_*`, `LMDB.MDB_*` | Raw `ccall` bindings + status-code constants. For power users integrating with custom data layouts or shaving allocations on hot paths. |
+| Surface | What it offers | When to use |
+|---------|----------------|-------------|
+| **High-level interface** | `LMDBDict <: AbstractDict{K,V}` | When you want a persistent `Dict`. |
+| **Julia wrappers** | `Environment`, `Transaction`, `DBI`, `Cursor` | When you want explicit transactions and cursors with Julia-shaped wrappers. |
+| **C API** | `LMDB.mdb_*`, `LMDB.MDB_*` | Raw `ccall` bindings and status-code constants, for custom data layouts or when you want to skip allocations on hot paths. |
 
-The C API also includes `MDBValue`, `MDBArg`, and the
-[`MDBValueIO`](@ref LMDB.MDBValueIO) extension point — an `IO` view
-over `MDB_val` that lets custom value representations plug into all the
-typed reads via `Base.read(io, T)`.
+`MDBValue`, `MDBArg`, and the [`MDBValueIO`](@ref LMDB.MDBValueIO)
+type sit between the C API and the Julia wrappers. `MDBValueIO` is an
+`IO` view over `MDB_val`; defining `Base.read(io, T)` on it is how you
+teach the typed reads about a custom value type.
 
-The Usage section is organised in increasing order of complexity: start
-with [Essentials](@ref) for a working example, then [Dictionary
-interface](@ref) for the `LMDBDict` surface, and progress through
-[Environments](@ref), [Transactions](@ref), [Databases](@ref),
-[Cursors](@ref), and [Duplicate-sort databases](@ref) as you need them.
-[Low-level bindings](@ref) covers the `ccall` surface for callers who need
-to skip the wrappers.
+The Usage section starts simple and gets more involved: [Essentials](@ref)
+has a working example, [Dictionary interface](@ref) covers `LMDBDict`,
+and [Environments](@ref), [Transactions](@ref), [Databases](@ref),
+[Cursors](@ref), and [Duplicate-sort databases](@ref) cover the wrappers.
+[Low-level bindings](@ref) is the raw `ccall` surface.
 
-The API reference mirrors the same structure but lists every exported and
-public docstring.
+The API reference follows the same structure and lists every exported
+and public docstring.
 
 ## A 5-line example
 

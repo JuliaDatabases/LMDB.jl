@@ -72,10 +72,10 @@ end
 Allocate `size` bytes of value space at `key` directly in LMDB's
 mmap'd write buffer, then call `f(buf::Vector{UInt8})` so the caller
 fills it in place. Equivalent to `put!` with the `MDB_RESERVE` flag,
-without the intermediate `Vector{UInt8}` round-trip — useful when the
-value's bytes can be produced directly into a destination buffer
-(e.g. by `unsafe_store!` of a header followed by `copyto!` of a
-payload). Heed's `Database::put_reserved` plays the same role.
+without the intermediate `Vector{UInt8}` round-trip. Useful when the
+value's bytes can be produced straight into a destination buffer (for
+example, an `unsafe_store!` of a header followed by `copyto!` of a
+payload). Equivalent to heed's `Database::put_reserved`.
 
 `buf` is an `unsafe_wrap` over the LMDB-allocated page; it is *only
 valid inside `f`* (and only inside the enclosing write txn). The
@@ -103,8 +103,8 @@ the database. Returns `true` if an entry was removed, `false` if the
 key was not present. Other LMDB errors propagate as `LMDBError`.
 
 The Bool-return / no-throw-on-miss shape matches `Base.delete!`'s "if
-any" contract and the dominant LMDB-binding convention (heed, py-lmdb,
-lmdb-js, lmdbxx).
+any" contract and the LMDB-binding convention shared by heed, py-lmdb,
+lmdb-js, and lmdbxx.
 """
 delete!(txn::Transaction, dbi::DBI, key) = _delete!(txn, dbi, key, MDBValue())
 delete!(txn::Transaction, dbi::DBI, key, val) = _delete!(txn, dbi, key, val)

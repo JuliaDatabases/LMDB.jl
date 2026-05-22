@@ -26,10 +26,10 @@ end
 @testset "Integration" begin
 
 # Power-user pattern: open an env via the Environment kwargs ctor, run
-# a write txn through the Julia API, then a read txn through a cursor walk
-# using only the Julia API + raw MDB_val refs (the shape cuTile.DiskCache
-# follows). Regression guard: ensures no future change breaks the
-# `walk(...) do k_ref, v_ref` zero-copy idiom.
+# a write txn through the Julia wrappers, then a read txn through a cursor
+# walk using only the Julia wrappers + raw MDB_val refs (the shape
+# cuTile.DiskCache follows). Regression guard: ensures no future change
+# breaks the `walk(...) do k_ref, v_ref` zero-copy idiom.
 mktempdir() do dir
     env = Environment(dir;
                       mapsize    = 1 << 28,

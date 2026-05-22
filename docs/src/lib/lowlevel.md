@@ -12,15 +12,15 @@ constants.
 
 Everything is public-but-unexported: refer to it as `LMDB.mdb_env_create`,
 `LMDB.MDB_NOTLS`, `LMDB.MDB_val`. The bindings in this section auto-throw
-on a non-zero status; for callers that need to inspect the raw status
-code, an `unchecked_*` companion is paired with each.
+on a non-zero status. Each one is paired with an `unchecked_*` companion
+for callers that need to inspect the raw status code.
 
 ## The auto-throw convention
 
 Every status-returning binding in `liblmdb.jl` is paired with an
 `unchecked_*` companion at definition time. Use the bare name when any
 error should propagate (the common case); use `unchecked_*` when you
-need to inspect the raw `Cint` yourself — e.g. distinguishing
+need to inspect the raw `Cint` yourself, for example to distinguish
 `MDB_NOTFOUND` from a real error:
 
 ```julia
@@ -34,15 +34,15 @@ Bindings that return non-status data (`mdb_strerror`, `mdb_version`,
 `mdb_txn_id`, `mdb_cmp`, `mdb_dcmp`, `mdb_env_get_maxkeysize`,
 `mdb_env_get_userctx`, `mdb_cursor_txn`, `mdb_cursor_dbi`) and
 `Cvoid`-returning ones (`mdb_env_close`, `mdb_dbi_close`,
-`mdb_txn_abort`, `mdb_txn_reset`, `mdb_cursor_close`) are left bare —
+`mdb_txn_abort`, `mdb_txn_reset`, `mdb_cursor_close`) are left bare;
 there is nothing to check.
 
 ## Customisation point: `MDBValueIO`
 
 `tryget` / `get` / `key` / `value` / `item` / typed `walk` / `pop!` /
-`replace!` all funnel through `read(::MDBValueIO, T)` to decode an
+`replace!` all go through `read(::MDBValueIO, T)` to decode an
 `MDB_val` into a Julia value. Define a `Base.read` method on
-`MDBValueIO` to plug in a custom representation — see [Cursors](@ref)
+`MDBValueIO` to plug in a custom representation; see [Cursors](@ref)
 for a worked example.
 
 ```@docs

@@ -18,8 +18,7 @@ txn = start(env; flags = MDB_RDONLY)      # read-only
 LMDB can hold one writer plus an unlimited number of readers
 concurrently. Read txns do not block writers and vice versa.
 
-The do-block form is the recommended shape — it commits on normal
-return and aborts on throw:
+The do-block form commits on normal return and aborts on throw:
 
 ```julia
 result = start(env) do txn
@@ -33,8 +32,8 @@ end                                       # commits if no throw
 ## Commit / abort
 
 `commit(txn)` writes the txn's modifications to disk and frees the
-handle. `abort(txn)` discards them. Both are idempotent — calling them
-twice (or on a never-started txn) is a silent no-op. `Transaction`'s
+handle; `abort(txn)` discards them. Both are idempotent: calling them
+twice, or on a never-started txn, is a silent no-op. `Transaction`'s
 finalizer calls `abort`, so an abandoned write txn eventually releases
 LMDB's exclusive write mutex.
 
@@ -44,9 +43,9 @@ undefined behaviour.
 
 ## Read-only transactions
 
-Read-only txns are cheap to start and stop, but for tight loops the
+Read-only txns are cheap to start and stop, but in a tight loop the
 [`reset`](@ref Base.reset(::LMDB.Transaction)) / [`renew`](@ref renew)
-pair is even cheaper:
+pair is cheaper still:
 
 ```julia
 txn = start(env; flags = MDB_RDONLY)
@@ -63,9 +62,9 @@ end
 abort(txn)
 ```
 
-`reset` is only valid on read-only txns; `renew` fetches a new snapshot
-of the database. Without `renew`, the parked txn would not see writes
-committed in the meantime.
+`reset` is only valid on read-only txns. `renew` fetches a fresh
+database snapshot; without it, the parked txn won't see writes that
+landed in the meantime.
 
 ## Sub-transactions
 
@@ -90,8 +89,8 @@ start(env) do parent
 end
 ```
 
-LMDB does not support nested *read-only* txns — pass a write txn as the
-parent.
+LMDB does not support nested *read-only* txns; the parent must be a
+write txn.
 
 ## Reader slots
 
@@ -101,9 +100,9 @@ high-concurrency read workloads, or call [`reader_check(env)`](@ref) to
 reap slots left behind by crashed processes.
 
 Aggressive `for … break` over an `LMDBDict` without GC pressure can
-pile up read txns; the explicit
-[`walk(f, cur)`](@ref API-Cur-walk) form inside an `open(txn) do …`
-block is leak-free.
+pile up read txns. If that's a concern, use
+[`walk(f, cur)`](@ref API-Cur-walk) inside an explicit
+`open(txn) do …` block instead.
 
 ## Picking flags
 

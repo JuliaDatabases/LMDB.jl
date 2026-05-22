@@ -10,9 +10,8 @@ database handle, and cursor lives inside one env.
 
 ## Creating and opening
 
-The simplest path is the one-call constructor — it `create`s the
-handle, applies optional configuration, and `open`s the directory in a
-single call:
+The one-call constructor `create`s the handle, applies any configuration,
+and `open`s the directory in one go:
 
 ```julia
 env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
@@ -24,7 +23,7 @@ env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
 If anything fails between `create` and a successful `open`, the
 partially constructed env is closed before rethrowing.
 
-The split form is also available, mirroring the LMDB C API:
+The split form mirrors the LMDB C API:
 
 ```julia
 env = create()
@@ -73,15 +72,14 @@ MDB_RDONLY)` on an open env will return `EINVAL`.
 
 ## Sizing the map
 
-The `mapsize` is a *virtual* limit on the env's address space, not the
-on-disk size. A typical pattern is to pick a generous power of two
-(say, 1 GiB or 8 GiB) up front; the on-disk file grows incrementally as
-data is written.
+`mapsize` is a *virtual* limit on the env's address space, not the
+on-disk size. Pick a generous power of two (say, 1 GiB or 8 GiB) up
+front; the on-disk file grows incrementally as data is written.
 
 If a write txn would exceed `mapsize`, LMDB returns `MDB_MAP_FULL`
-(catchable via [`is_map_full(::LMDBError)`](@ref is_map_full)). The
-remedy is to close the env, raise `mapsize`, and reopen — no rewrite
-of the database is needed.
+(catchable via [`is_map_full(::LMDBError)`](@ref is_map_full)). To
+recover, close the env, raise `mapsize`, and reopen. The database
+itself does not need rewriting.
 
 ## Inspection
 
@@ -107,8 +105,8 @@ and the destination is approximately the size of the live data set:
 copy(env, "/backup/mydb-snapshot"; compact = true)
 ```
 
-There is also a file-descriptor variant — `copy(env, fd)` — for
-streaming the snapshot to a pipe or socket.
+A file-descriptor variant, `copy(env, fd)`, streams the snapshot to a
+pipe or socket.
 
 ## Reader management
 
