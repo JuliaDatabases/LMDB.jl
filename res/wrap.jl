@@ -41,7 +41,11 @@ function postprocess!(path::AbstractString)
         last = m.offset + length(m.match)
     end
     write(out, SubString(src, last, lastindex(src)))
-    write(path, String(take!(out)))
+    src = String(take!(out))
+    # Clang.Generators always emits `export $jll_pkg_name` next to its
+    # `using` line; strip it so LMDB_jll stays an implementation detail.
+    src = replace(src, r"^export LMDB_jll\n"m => "")
+    write(path, src)
 end
 
 function main()
