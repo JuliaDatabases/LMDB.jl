@@ -12,6 +12,8 @@ mutable struct Transaction
     env::Environment
     function Transaction(env::Environment, h::Ptr{MDB_txn})
         t = new(h, env)
+        # Track on the env so `close(env)` can abort us if the caller forgot.
+        push!(env.txns, WeakRef(t))
         finalizer(_finalize_txn, t)
         return t
     end
@@ -56,6 +58,9 @@ Idempotent: safe to call after a previous `commit`/`abort` or on a never-opened 
 """
 function abort(txn::Transaction)
     txn.handle == C_NULL && return
+    # If env was closed first, `mdb_env_close` already freed the txn memory,
+    # so the handle is dangling. Same defensive check as `close(::Cursor)`.
+    isopen(txn.env) || (txn.handle = C_NULL; return)
     mdb_txn_abort(txn)
     txn.handle = C_NULL
     return
