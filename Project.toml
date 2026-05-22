@@ -1,7 +1,7 @@
 name = "LMDB"
 uuid = "11f193de-5e89-5f17-923a-7d207d56daf9"
 authors = ["Art Wild <wildart@gmail.com>"]
-version = "1.0.0"
+version = "2.0.0"
 
 [workspace]
 projects = ["docs", "test"]
