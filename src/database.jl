@@ -155,9 +155,8 @@ end
 """
     get(txn::Transaction, dbi::Database, key, ::Type{T}) -> T
 
-Get an item from a database, decoded as `T`. Throws `LMDBError` if
-`key` is not present. Analogous to `getindex(d, k)` on a regular
-`AbstractDict`.
+Read the value at `key`, decoded as `T`. Throws `LMDBError` if `key`
+isn't there — the same shape as `d[k]` on a regular `AbstractDict`.
 """
 @inline function get(txn::Transaction, dbi::Database, key, ::Type{T}) where T
     val_ref = Ref(MDBValue())
@@ -168,9 +167,9 @@ end
 """
     get(txn::Transaction, dbi::Database, key, ::Type{T}, default) -> Union{T,typeof(default)}
 
-Get an item from a database, returning `default` if `key` is not
-present. Mirrors `Base.get(dict, key, default)`. For the
-`Union{T,Nothing}` shape, pass `nothing` as `default`.
+Read the value at `key`, decoded as `T`; return `default` if the key
+isn't there. Same shape as `Base.get(dict, key, default)`. Pass
+`nothing` as `default` for the `Union{T,Nothing}` form.
 """
 @inline function get(txn::Transaction, dbi::Database, key, ::Type{T}, default) where T
     val_ref = Ref(MDBValue())

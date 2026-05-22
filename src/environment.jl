@@ -63,8 +63,8 @@ end
 """
     Environment(f::Function, path::AbstractString; kwargs...) -> result
 
-`do`-block form. Opens the env, runs `f(env)`, and closes it on the
-way out whether or not `f` throws. Returns whatever `f` returns.
+`do`-block form. Opens the env, runs `f(env)`, closes it on the way
+out — even if `f` throws. Returns whatever `f` returns.
 """
 function Environment(f::Function, path::AbstractString; kwargs...)
     env = Environment(path; kwargs...)
