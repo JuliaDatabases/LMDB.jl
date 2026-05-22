@@ -113,7 +113,7 @@ silent no-op, matching the convention of `close(::IO)`. That makes
 finalizers safe to run after an explicit close.
 """
 function close(env::Environment)
-    env.handle == C_NULL && return zero(Cint)
+    env.handle == C_NULL && return nothing
     # LMDB requires all transactions to be closed before `mdb_env_close`;
     # otherwise it leaves shared lockfile/heap state corrupted and the
     # next env-open in the process can crash inside `mdb_txn_renew0`.
@@ -125,26 +125,26 @@ function close(env::Environment)
     mdb_env_close(env)
     env.handle = C_NULL
     env.path = ""
-    return zero(Cint)
+    return nothing
 end
 
 """Flush the data buffers to disk"""
 function sync(env::Environment, force::Bool = false)
     fval = force ? 1 : 0
     mdb_env_sync(env, fval)
-    return zero(Cint)
+    return nothing
 end
 
-"""Set environment flags"""
+"""Set environment flags. Returns `env` to allow chaining."""
 function set!(env::Environment, flag::Integer)
     mdb_env_set_flags(env, Cuint(flag), one(Cint))
-    return flag
+    return env
 end
 
-"""Unset environment flags"""
+"""Unset environment flags. Returns `env` to allow chaining."""
 function unset!(env::Environment, flag::Integer)
     mdb_env_set_flags(env, Cuint(flag), zero(Cint))
-    return flag
+    return env
 end
 
 
