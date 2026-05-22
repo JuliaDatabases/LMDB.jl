@@ -73,11 +73,11 @@ passed to `tryget` / `get` / `key` / `value` / `item` / typed `walk` /
 the primitive numeric types (`Int8`/…/`Int128`, `Float16`/…/`Float64`,
 `Bool`, `Char`, `Ptr{T}`) plus `String`, all zero-allocation thanks to
 the `@inline` `unsafe_read` override below. The package adds two more
-overloads — `Vector{E}` for any bitstype `E` and `UInt8` — that
-consume the remaining buffer in a single copy.
+overloads, `Vector{E}` for any bitstype `E` and `UInt8`, that consume
+the remaining buffer in a single copy.
 
-To plug in a custom representation — including bitstype structs that
-Base's primitive reads don't cover — define a single `Base.read`
+To plug in a custom representation (including bitstype structs that
+Base's primitive reads don't cover), define a single `Base.read`
 method on your own type. Defining it on the abstract `IO` is the
 idiomatic Julia form and keeps the decoder portable to other byte
 sources:
@@ -97,11 +97,10 @@ pattern:
     Base.read(io::IO, ::Type{T}) = read!(io, Ref{T}())[]
 
 This is the analogue of heed's `BytesDecode<'txn>` trait, expressed
-through Julia's existing IO extension point rather than a bespoke
-function.
+through Julia's existing IO interface rather than a bespoke function.
 
-The underlying buffer points into LMDB's mmap and is **only valid for
-the producing transaction's lifetime** — copy out anything you want to
+The underlying buffer points into LMDB's mmap and is only valid for
+the producing transaction's lifetime; copy out anything you want to
 retain past commit/abort. The default `String` and `Vector{E}` reads
 both copy.
 """

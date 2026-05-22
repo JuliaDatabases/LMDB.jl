@@ -9,8 +9,8 @@ using JuliaFormatter
 
 using LMDB_jll
 
-# Tier-1 bindings whose return type is `Cint` but is **not** an LMDB status
-# code. The `@checked` post-processor leaves these alone so callers don't get
+# Bindings whose return type is `Cint` but is **not** an LMDB status code.
+# The `@checked` post-processor leaves these alone so callers don't get
 # spurious throws.
 const UNCHECKED_CINT = (
     "mdb_env_get_maxkeysize",  # returns the maximum key size, not a status.

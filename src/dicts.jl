@@ -1,9 +1,10 @@
 """
     LMDBDict{K,V}(path; readonly, rdahead, mapsize, readers, dbs)
 
-A persistent `AbstractDict{K,V}` backed by a single LMDB environment +
-default DBI. The keys and values are encoded as raw bytes — `String`,
-`Vector{T}` (where `T` is bitstype), or any bitstype scalar.
+A persistent `AbstractDict{K,V}` backed by a single LMDB environment
+plus its default DBI. Keys and values are encoded as raw bytes;
+`String`, `Vector{T}` (where `T` is bitstype), or any bitstype scalar
+all work.
 
 For prefix-scoped scans (e.g. hierarchical "directory" key schemes),
 see `LMDB.scan` / `LMDB.scan_keys` / `LMDB.scan_values` / `LMDB.list_dirs`.

@@ -1,4 +1,4 @@
-# Applied to a tier-1 binding that returns an LMDB status code (`Cint`).
+# Applied to a C-API binding that returns an LMDB status code (`Cint`).
 # Emits two functions:
 #
 #   * `<fname>(...)`           — same name, throws `LMDBError` on a non-zero

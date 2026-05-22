@@ -328,14 +328,14 @@ end
     walk(f, cur::Cursor, ::Type{K}, ::Type{V}=K; from = nothing)
 
 Typed overload of `walk` mirroring the `tryget(txn, dbi, key, T)` /
-`key(cur, T)` / `seek!(cur, key, T)` shape used elsewhere in tier-2.
+`key(cur, T)` / `seek!(cur, key, T)` shape used elsewhere in the Julia wrappers.
 Decodes each key and value through `read(::MDBValueIO, K)` /
 `read(::MDBValueIO, V)` before passing them to `f(k::K, v::V)`. Same
 stop contract as the raw form: `f` returning `false` halts iteration.
 
 Define a custom `Base.read(io::LMDB.MDBValueIO, ::Type{T})` to control
-what gets decoded — e.g. a `(atime, size)` tuple from a framed value,
-or a zero-copy view. This is the iteration counterpart to
+what gets decoded (for example, a `(atime, size)` tuple from a framed
+value, or a zero-copy view). This is the iteration counterpart to
 `tryget(..., T)`.
 """
 function walk(f, cur::Cursor, ::Type{K}, ::Type{V} = K;
@@ -359,8 +359,8 @@ end
 Delete the entry the cursor is currently positioned at. Throws
 `LMDBError` if the cursor is not on a live entry (LMDB returns `EINVAL`,
 not `MDB_NOTFOUND`, so the Bool/idempotent shape used by
-`delete!(txn, dbi, key)` doesn't apply here — position the cursor first
-with `seek!`/`next!` if you need to recover from a missing entry.
+`delete!(txn, dbi, key)` doesn't apply here; position the cursor first
+with `seek!`/`next!` if you need to recover from a missing entry).
 
 After a successful delete, LMDB advances the cursor to the next entry.
 """

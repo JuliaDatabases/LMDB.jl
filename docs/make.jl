@@ -1,21 +1,48 @@
 using Documenter, LMDB
 
-makedocs(
-    modules = [LMDB],
-    clean = false,
-    format = Documenter.HTML(),
-    sitename = "LMDB.jl",
-    authors = "Art Wild, Fabian Gans",
-    pages = [
-        "Home" => "index.md",
-        "Manual" => "manual.md",
-        "API" => [
-            "Index"=>"api/index.md", 
-        ]
-    ]
-)
+DocMeta.setdocmeta!(LMDB, :DocTestSetup, :(using LMDB); recursive = true)
 
-deploydocs(
-    repo = "github.com/wildart/LMDB.jl.git",
-)
+function main()
+    ci = get(ENV, "CI", "") == "true"
 
+    makedocs(
+        sitename = "LMDB.jl",
+        authors = "Art Wild, Fabian Gans, Tim Besard",
+        repo = Documenter.Remotes.GitHub("JuliaDatabases", "LMDB.jl"),
+        format = Documenter.HTML(prettyurls = ci,
+                                 edit_link = "main"),
+        modules = [LMDB],
+        checkdocs = :exports,
+        doctest = true,
+        pages = [
+            "Home" => "index.md",
+            "Usage" => [
+                "man/essentials.md",
+                "man/dict.md",
+                "man/environments.md",
+                "man/transactions.md",
+                "man/databases.md",
+                "man/cursors.md",
+                "man/dupsort.md",
+                "man/lowlevel.md",
+            ],
+            "API reference" => [
+                "lib/dict.md",
+                "lib/environments.md",
+                "lib/transactions.md",
+                "lib/databases.md",
+                "lib/cursors.md",
+                "lib/errors.md",
+                "lib/lowlevel.md",
+            ],
+        ],
+    )
+
+    if ci
+        deploydocs(
+            repo = "github.com/JuliaDatabases/LMDB.jl.git",
+        )
+    end
+end
+
+isinteractive() || main()

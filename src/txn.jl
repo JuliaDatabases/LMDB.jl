@@ -52,7 +52,7 @@ end
 """Abandon all the operations of the transaction instead of saving them.
 
 The transaction and its cursors must not be used after, because its handle is freed.
-Idempotent — safe to call after a previous `commit`/`abort` or on a never-opened txn.
+Idempotent: safe to call after a previous `commit`/`abort` or on a never-opened txn.
 """
 function abort(txn::Transaction)
     txn.handle == C_NULL && return
