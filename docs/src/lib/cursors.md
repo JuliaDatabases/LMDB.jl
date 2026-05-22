@@ -4,14 +4,14 @@
 CurrentModule = LMDB
 ```
 
-A `Cursor` is a positioned iterator over the entries in a `DBI`. Cursors
+A `Cursor` is a positioned iterator over the entries in a `Database`. Cursors
 are bound to a transaction. Closing the txn invalidates the cursor.
 
 ## Construction
 
 ```@docs
 Cursor
-Base.open(::Transaction, ::DBI)
+Cursor(::Transaction, ::Database)
 Base.close(::Cursor)
 Base.isopen(::Cursor)
 renew(::Transaction, ::Cursor)

@@ -39,10 +39,10 @@ the `unchecked_*` companion returns the raw `Cint` so the caller can
 branch on `MDB_NOTFOUND`/`MDB_KEYEXIST` and friends.
 
 At the Julia wrappers, handle methods that wrap status-returning
-bindings let `LMDBError` propagate. `tryget` and `get(..., default)`
-swallow `MDB_NOTFOUND` and return `nothing` or `default`.
-`delete!(txn, dbi, key)` likewise swallows `MDB_NOTFOUND` and returns
-`false`.
+bindings let `LMDBError` propagate. `get(..., default)` swallows
+`MDB_NOTFOUND` and returns `default` (use `nothing` for the
+`Union{T,Nothing}` shape). `delete!(txn, dbi, key)` likewise swallows
+`MDB_NOTFOUND` and returns `false`.
 
 At the high-level interface, missing keys produce `KeyError` (matching
 `Base.Dict`), and `pop!(d)` on an empty dict throws `ArgumentError`.

@@ -38,7 +38,7 @@ close(d)
 
 Behind the scenes this opens an `Environment` with `MDB_NOTLS` (so
 multiple read transactions can coexist on a single thread) and a single
-default `DBI`. Type conversion happens automatically for anything the
+default `Database`. Type conversion happens automatically for anything the
 `MDBValue` constructor accepts: `String`, `Vector{T}` of bitstype `T`,
 or any bitstype scalar.
 
@@ -50,7 +50,7 @@ control:
 - The high-level interface ([`LMDBDict`](@ref)) is the
   `AbstractDict{K,V}` surface. Start here unless you need
   transactional grouping or zero-copy reads.
-- The Julia wrappers (`Environment`, `Transaction`, `DBI`,
+- The Julia wrappers (`Environment`, `Transaction`, `Database`,
   `Cursor`) give you explicit lifetimes and fine-grained control with
   finalizers, parent refs, and `do`-block forms. Drop down to these
   via [Environments](@ref) → [Transactions](@ref) →
@@ -71,7 +71,7 @@ with a finalizer:
 |--------|-----------|------------|
 | `Environment` | `close` (`mdb_env_close`) | – |
 | `Transaction` | `abort` (`mdb_txn_abort`) | `Environment` |
-| `Cursor` | `close` (`mdb_cursor_close`) | `Transaction`, `DBI` |
+| `Cursor` | `close` (`mdb_cursor_close`) | `Transaction`, `Database` |
 | `LMDBDict` | `close` env + dbi | – |
 
 Parent references pin the lifetime: a `Cursor` keeps its `Transaction`
@@ -84,9 +84,9 @@ when GC runs.
 The do-block constructors are usually what you want:
 
 ```julia
-environment("/tmp/mydb"; flags = LMDB.MDB_NOTLS) do env
-    start(env) do txn
-        open(txn) do dbi
+Environment("/tmp/mydb"; flags = LMDB.MDB_NOTLS) do env
+    Transaction(env) do txn
+        Database(txn) do dbi
             put!(txn, dbi, "k", "v")
         end
     end                       # commits on success, aborts on throw
@@ -95,17 +95,7 @@ end                           # closes env
 
 ## Errors
 
-Every LMDB-internal error surfaces as an `LMDBError`:
-
-```julia
-try
-    LMDB.get(txn, dbi, "missing", String)
-catch e
-    e isa LMDBError && is_notfound(e) || rethrow()
-    # treat as missing
-end
-```
-
-For the usual "missing key" case, prefer the no-throw paths:
-[`tryget(txn, dbi, key, T)`](@ref tryget) returns `nothing` on miss,
-and `get(txn, dbi, key, T, default)` falls back to `default`.
+Every LMDB-internal error surfaces as an `LMDBError`. For the usual
+"missing key" case, prefer the no-throw paths:
+`get(txn, dbi, key, T, default)` falls back to `default` (use
+`nothing` for the `Union{T,Nothing}` shape).

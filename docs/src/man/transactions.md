@@ -11,8 +11,8 @@ time per environment).
 ## Starting a transaction
 
 ```julia
-txn = start(env)                          # read-write
-txn = start(env; flags = LMDB.MDB_RDONLY)      # read-only
+txn = Transaction(env)                          # read-write
+txn = Transaction(env; flags = LMDB.MDB_RDONLY) # read-only
 ```
 
 LMDB can hold one writer plus an unlimited number of readers
@@ -21,10 +21,10 @@ concurrently. Read txns do not block writers and vice versa.
 The do-block form commits on normal return and aborts on throw:
 
 ```julia
-result = start(env) do txn
-    open(txn) do dbi
+result = Transaction(env) do txn
+    Database(txn) do dbi
         put!(txn, dbi, "k", "v")
-        tryget(txn, dbi, "k", String)
+        get(txn, dbi, "k", String, nothing)
     end
 end                                       # commits if no throw
 ```
@@ -48,11 +48,11 @@ Read-only txns are cheap to start and stop, but in a tight loop the
 pair is cheaper still:
 
 ```julia
-txn = start(env; flags = LMDB.MDB_RDONLY)
+txn = Transaction(env; flags = LMDB.MDB_RDONLY)
 for batch in batches
-    open(txn) do dbi
+    Database(txn) do dbi
         for k in batch
-            v = tryget(txn, dbi, k, String)
+            v = get(txn, dbi, k, String, nothing)
             handle(k, v)
         end
     end
@@ -73,18 +73,18 @@ uncommitted state. `commit` on the child folds its changes into the
 parent; `abort` discards them, but the parent continues:
 
 ```julia
-start(env) do parent
-    open(parent) do dbi
+Transaction(env) do parent
+    Database(parent) do dbi
         put!(parent, dbi, "before", "1")
         try
-            start(env; parent = parent) do child
+            Transaction(env; parent = parent) do child
                 put!(child, dbi, "during", "2")
                 error("oops")             # abort propagates
             end
         catch
         end
         # "before" survives; "during" was rolled back
-        @assert tryget(parent, dbi, "during", String) === nothing
+        @assert get(parent, dbi, "during", String, nothing) === nothing
     end
 end
 ```
@@ -102,7 +102,7 @@ reap slots left behind by crashed processes.
 Aggressive `for … break` over an `LMDBDict` without GC pressure can
 pile up read txns. If that becomes a problem, use
 [`walk(f, cur)`](@ref API-Cur-walk) inside an explicit
-`open(txn) do …` block instead.
+`Database(txn) do …` block instead.
 
 ## Picking flags
 
@@ -110,13 +110,13 @@ The most common patterns:
 
 ```julia
 # Hot read path: many small lookups, no writes
-start(env; flags = LMDB.MDB_RDONLY) do txn ... end
+Transaction(env; flags = LMDB.MDB_RDONLY) do txn ... end
 
 # Bulk import: single transaction across many writes (atomic, fast)
-start(env) do txn ... end
+Transaction(env) do txn ... end
 
 # Long-running reader (e.g. background scrubber): reset + renew loop
-txn = start(env; flags = LMDB.MDB_RDONLY)
+txn = Transaction(env; flags = LMDB.MDB_RDONLY)
 while running
     ...
     reset(txn); renew(txn)

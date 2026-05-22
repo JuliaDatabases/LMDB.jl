@@ -5,7 +5,7 @@ CurrentModule = LMDB
 ```
 
 `LMDBDict{K,V}` is a persistent `AbstractDict{K,V}` backed by a single
-LMDB environment plus the default DBI. Open it, treat it like a `Dict`,
+LMDB environment plus the default Database. Open it, treat it like a `Dict`,
 close it.
 
 ## Construction

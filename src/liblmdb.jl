@@ -2,7 +2,6 @@
 # To re-generate, execute res/wrap.jl
 
 using LMDB_jll
-export LMDB_jll
 
 using CEnum: CEnum, @cenum
 

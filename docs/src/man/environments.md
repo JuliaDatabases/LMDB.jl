@@ -10,8 +10,8 @@ database handle, and cursor lives inside one env.
 
 ## Creating and opening
 
-The one-call constructor `create`s the handle, applies any configuration,
-and `open`s the directory in one go:
+`Environment(path; kwargs...)` does the whole open dance — allocate
+the handle, set mapsize/maxreaders/maxdbs/flags, open the directory:
 
 ```julia
 env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
@@ -20,33 +20,23 @@ env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
                                flags      = LMDB.MDB_NOTLS)
 ```
 
-If anything fails between `create` and a successful `open`, the
-partially constructed env is closed before rethrowing.
+If anything fails on the way through, the half-open env is closed
+before the exception propagates.
 
-The split form mirrors the LMDB C API:
-
-```julia
-env = create()
-env[:MapSize] = 1 << 30
-env[:Readers] = 510
-env[:DBs]     = 8
-open(env, "/tmp/mydb"; flags = LMDB.MDB_NOTLS)
-```
-
-The `[:Flags]`/`[:Readers]`/`[:MapSize]`/`[:DBs]` keys map directly to
-`mdb_env_set_flags` / `mdb_env_set_maxreaders` / `mdb_env_set_mapsize`
-/ `mdb_env_set_maxdbs`. `set!` / `unset!` flip individual flag bits
-after the env is open.
+After the env is open, `[:Flags]` / `[:Readers]` / `[:MapSize]` /
+`[:DBs]` setindex! keys map to `mdb_env_set_flags` /
+`mdb_env_set_maxreaders` / `mdb_env_set_mapsize` / `mdb_env_set_maxdbs`,
+and `set!` / `unset!` flip individual flag bits.
 
 `getindex` exposes a few read-only views: `env[:Flags]`,
 `env[:Readers]`, and `env[:KeySize]` (the maximum key length, fixed at
 compile time of the bundled `LMDB_jll`).
 
-The do-block constructor `environment(f, path; flags, mode)` opens the
-env, calls `f(env)`, and closes the env on the way out:
+The do-block form `Environment(f, path; kwargs...)` opens the env,
+calls `f(env)`, and closes on the way out:
 
 ```julia
-environment("/tmp/mydb"; flags = LMDB.MDB_NOTLS) do env
+Environment("/tmp/mydb"; flags = LMDB.MDB_NOTLS) do env
     # use env
 end
 ```

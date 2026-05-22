@@ -18,7 +18,7 @@ LMDB.jl exposes the same database through three surfaces:
 | Surface | What it offers | When to use |
 |---------|----------------|-------------|
 | High-level interface | `LMDBDict <: AbstractDict{K,V}` | When you want a persistent `Dict`. |
-| Julia wrappers | `Environment`, `Transaction`, `DBI`, `Cursor` | When you want explicit transactions and cursors with Julia-shaped wrappers. |
+| Julia wrappers | `Environment`, `Transaction`, `Database`, `Cursor` | When you want explicit transactions and cursors with Julia-shaped wrappers. |
 | C API | `LMDB.mdb_*`, `LMDB.MDB_*` | Raw `ccall` bindings and status-code constants, for custom data layouts or when you want to skip allocations on hot paths. |
 
 `MDBValue`, `MDBArg`, and the [`MDBValueIO`](@ref LMDB.MDBValueIO)

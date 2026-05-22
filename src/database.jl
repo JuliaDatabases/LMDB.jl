@@ -1,30 +1,42 @@
-export DBI, tryget, put_reserved!
-@public flags
+@public Database, put_reserved!, flags
 
 """
 A handle for an individual database in the DB environment.
 """
-mutable struct DBI
+mutable struct Database
     handle::MDB_dbi
     name::String
 end
 
-Base.cconvert(::Type{MDB_dbi}, d::DBI) = d.handle
+Base.cconvert(::Type{MDB_dbi}, d::Database) = d.handle
 
 "Check if database is open"
-isopen(dbi::DBI) = dbi.handle != zero(Cuint)
+isopen(dbi::Database) = dbi.handle != zero(Cuint)
 
-"Open a database in the environment"
-function open(txn::Transaction, dbname::String = ""; flags::Integer = zero(Cuint))
-    cdbname = length(dbname) > 0 ? dbname : Ptr{Cchar}(C_NULL)
+"""
+    Database(txn::Transaction, dbname::AbstractString = ""; flags=0) -> Database
+
+Open a named sub-database inside the transaction. An empty `dbname`
+opens the environment's default DB. `flags` is forwarded to
+`mdb_dbi_open` (e.g. `MDB_CREATE`, `MDB_DUPSORT`).
+"""
+function Database(txn::Transaction, dbname::AbstractString = "";
+             flags::Integer = zero(Cuint))
+    cdbname = length(dbname) > 0 ? String(dbname) : Ptr{Cchar}(C_NULL)
     handle = Ref{MDB_dbi}()
     mdb_dbi_open(txn, cdbname, Cuint(flags), handle)
-    return DBI(handle[], dbname)
+    return Database(handle[], String(dbname))
 end
 
-"Wrapper of DBI `open` for `do` construct"
-function open(f::Function, txn::Transaction, dbname::String = ""; flags::Integer = zero(Cuint))
-    dbi = open(txn, dbname, flags=Cuint(flags))
+"""
+    Database(f::Function, txn::Transaction, dbname::AbstractString = ""; kwargs...) -> result
+
+`do`-block form: open `dbname`, run `f(dbi)`, close the handle on the
+way out. Returns whatever `f` returns.
+"""
+function Database(f::Function, txn::Transaction, dbname::AbstractString = "";
+             flags::Integer = zero(Cuint))
+    dbi = Database(txn, dbname; flags = Cuint(flags))
     tenv = env(txn)
     try
         f(dbi)
@@ -34,7 +46,7 @@ function open(f::Function, txn::Transaction, dbname::String = ""; flags::Integer
 end
 
 "Close a database handle. Idempotent on both env and dbi."
-function close(env::Environment, dbi::DBI)
+function close(env::Environment, dbi::Database)
     isopen(env) || return
     isopen(dbi) || return
     mdb_dbi_close(env, dbi)
@@ -43,14 +55,14 @@ function close(env::Environment, dbi::DBI)
 end
 
 "Retrieve the DB flags for a database handle"
-function flags(txn::Transaction, dbi::DBI)
+function flags(txn::Transaction, dbi::Database)
     flags = Ref{Cuint}(0)
     mdb_dbi_flags(txn, dbi, flags)
     return flags[]
 end
 
-function Base.show(io::IO, dbi::DBI)
-    print(io, "DBI(")
+function Base.show(io::IO, dbi::Database)
+    print(io, "Database(")
     isempty(dbi.name) ? print(io, "<main>") : show(io, dbi.name)
     print(io, ", ", isopen(dbi) ? "open" : "closed", ")")
 end
@@ -60,17 +72,17 @@ end
 If parameter `delete` is `false` DB will be emptied, otherwise
 DB will be deleted from the environment and DB handle will be closed
 """
-function drop(txn::Transaction, dbi::DBI; delete = false)
+function drop(txn::Transaction, dbi::Database; delete = false)
     mdb_drop(txn, dbi, Cint(delete))
 end
 
 "Store items into a database"
-function put!(txn::Transaction, dbi::DBI, key, val; flags::Integer = zero(Cuint))
+function put!(txn::Transaction, dbi::Database, key, val; flags::Integer = zero(Cuint))
     mdb_put(txn, dbi, key, val, Cuint(flags))
 end
 
 """
-    put_reserved!(f, txn::Transaction, dbi::DBI, key, size::Integer; flags=0)
+    put_reserved!(f, txn::Transaction, dbi::Database, key, size::Integer; flags=0)
 
 Allocate `size` bytes of value space at `key` directly in LMDB's
 mmap'd write buffer, then call `f(buf::Vector{UInt8})` so the caller
@@ -88,7 +100,7 @@ return; copy what you want to keep.
 Cannot be combined with `MDB_DUPSORT` or `MDB_DUPFIXED` databases,
 since LMDB forbids `MDB_RESERVE` there.
 """
-function put_reserved!(f, txn::Transaction, dbi::DBI, key, size::Integer;
+function put_reserved!(f, txn::Transaction, dbi::Database, key, size::Integer;
                        flags::Integer = zero(Cuint))
     val_ref = Ref(MDB_val(Csize_t(size), C_NULL))
     mdb_put(txn, dbi, key, val_ref, Cuint(flags) | Cuint(MDB_RESERVE))
@@ -98,8 +110,8 @@ function put_reserved!(f, txn::Transaction, dbi::DBI, key, size::Integer;
 end
 
 """
-    delete!(txn::Transaction, dbi::DBI, key) -> Bool
-    delete!(txn::Transaction, dbi::DBI, key, val) -> Bool
+    delete!(txn::Transaction, dbi::Database, key) -> Bool
+    delete!(txn::Transaction, dbi::Database, key, val) -> Bool
 
 Delete `key` (or, in `MDB_DUPSORT`, the specific `(key, val)` pair) from
 the database. Returns `true` if an entry was removed, `false` if the
@@ -109,9 +121,9 @@ The Bool-return, no-throw-on-miss shape matches `Base.delete!`'s "if
 any" contract and the LMDB-binding convention shared by heed, py-lmdb,
 lmdb-js, and lmdbxx.
 """
-delete!(txn::Transaction, dbi::DBI, key) = _delete!(txn, dbi, key, MDBValue())
-delete!(txn::Transaction, dbi::DBI, key, val) = _delete!(txn, dbi, key, val)
-function _delete!(txn::Transaction, dbi::DBI, key, val_arg)
+delete!(txn::Transaction, dbi::Database, key) = _delete!(txn, dbi, key, MDBValue())
+delete!(txn::Transaction, dbi::Database, key, val) = _delete!(txn, dbi, key, val)
+function _delete!(txn::Transaction, dbi::Database, key, val_arg)
     ret = unchecked_mdb_del(txn, dbi, key, val_arg)
     ret == MDB_NOTFOUND && return false
     iszero(ret) || throw(LMDBError(ret))
@@ -119,7 +131,7 @@ function _delete!(txn::Transaction, dbi::DBI, key, val_arg)
 end
 
 """
-    stat(txn::Transaction, dbi::DBI) -> NamedTuple
+    stat(txn::Transaction, dbi::Database) -> NamedTuple
 
 Return statistics for the database referenced by `dbi` within `txn`:
 
@@ -134,59 +146,62 @@ Return statistics for the database referenced by `dbi` within `txn`:
 
 Live byte usage = `(branch_pages + leaf_pages + overflow_pages) * psize`.
 """
-function stat(txn::Transaction, dbi::DBI)
+function stat(txn::Transaction, dbi::Database)
     s_ref = Ref{MDB_stat}()
     mdb_stat(txn, dbi, s_ref)
     return stat_namedtuple(s_ref[])
 end
 
-"""Get an item from a database. Throws `LMDBError` if `key` is not present."""
-@inline function get(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
+"""
+    get(txn::Transaction, dbi::Database, key, ::Type{T}) -> T
+
+Read the value at `key`, decoded as `T`. Throws `LMDBError` if `key`
+isn't there — the same shape as `d[k]` on a regular `AbstractDict`.
+"""
+@inline function get(txn::Transaction, dbi::Database, key, ::Type{T}) where T
     val_ref = Ref(MDBValue())
     mdb_get(txn, dbi, key, val_ref)
     return Base.read(MDBValueIO(val_ref[]), T)
 end
 
-"""Get an item from a database, returning `nothing` if `key` is not present.
-Use this in preference to `get` + try/catch when a missing key is expected."""
-@inline function tryget(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
+"""
+    get(txn::Transaction, dbi::Database, key, ::Type{T}, default) -> Union{T,typeof(default)}
+
+Read the value at `key`, decoded as `T`; return `default` if the key
+isn't there. Same shape as `Base.get(dict, key, default)`. Pass
+`nothing` as `default` for the `Union{T,Nothing}` form.
+"""
+@inline function get(txn::Transaction, dbi::Database, key, ::Type{T}, default) where T
     val_ref = Ref(MDBValue())
     ret = unchecked_mdb_get(txn, dbi, key, val_ref)
-    ret == MDB_NOTFOUND && return nothing
+    ret == MDB_NOTFOUND && return default
     iszero(ret) || throw(LMDBError(ret))
     return Base.read(MDBValueIO(val_ref[]), T)
 end
 
-"""Get an item from a database, returning `default` if `key` is not present.
-The signature mirrors `Base.get(dict, key, default)`."""
-function get(txn::Transaction, dbi::DBI, key, ::Type{T}, default) where T
-    v = tryget(txn, dbi, key, T)
-    v === nothing ? default : v
-end
-
 """
-    replace!(txn::Transaction, dbi::DBI, key, val, ::Type{V}=typeof(val))
+    replace!(txn::Transaction, dbi::Database, key, val, ::Type{V}=typeof(val))
         -> Union{V,Nothing}
 
 Atomically write `val` at `key`, returning the previous value (decoded as
 `V`) or `nothing` if `key` was not present. Read and write share the same
 transaction.
 """
-function replace!(txn::Transaction, dbi::DBI, key, val,
+function replace!(txn::Transaction, dbi::Database, key, val,
                   ::Type{V}=typeof(val)) where V
-    old = tryget(txn, dbi, key, V)
+    old = get(txn, dbi, key, V, nothing)
     put!(txn, dbi, key, val)
     return old
 end
 
 """
-    pop!(txn::Transaction, dbi::DBI, key, ::Type{T}) -> Union{T,Nothing}
+    pop!(txn::Transaction, dbi::Database, key, ::Type{T}) -> Union{T,Nothing}
 
 Atomically read and delete the value at `key`, returning it (decoded as
 `T`) or `nothing` if `key` was not present.
 """
-function pop!(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
-    v = tryget(txn, dbi, key, T)
+function pop!(txn::Transaction, dbi::Database, key, ::Type{T}) where T
+    v = get(txn, dbi, key, T, nothing)
     v === nothing && return nothing
     delete!(txn, dbi, key)
     return v

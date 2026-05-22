@@ -5,7 +5,7 @@ export LMDBDict
     LMDBDict{K,V}(path; readonly, rdahead, mapsize, readers, dbs)
 
 A persistent `AbstractDict{K,V}` backed by a single LMDB environment
-plus its default DBI. Keys and values are encoded as raw bytes;
+plus its default Database. Keys and values are encoded as raw bytes;
 `String`, `Vector{T}` (where `T` is bitstype), and any bitstype scalar
 all work.
 
@@ -14,8 +14,8 @@ see `LMDB.scan`, `LMDB.scan_keys`, `LMDB.scan_values`, and `LMDB.list_dirs`.
 """
 mutable struct LMDBDict{K,V} <: AbstractDict{K,V}
     env::LMDB.Environment
-    dbi::LMDB.DBI
-    function LMDBDict{K,V}(env::LMDB.Environment, dbi::LMDB.DBI) where {K,V}
+    dbi::LMDB.Database
+    function LMDBDict{K,V}(env::LMDB.Environment, dbi::LMDB.Database) where {K,V}
         x = new{K,V}(env, dbi)
         finalizer(x) do d
             LMDB.close(d.env, d.dbi)
@@ -37,8 +37,8 @@ function LMDBDict{K,V}(path::String; readonly = false, rdahead = false,
     readonly && (envflags |= Cuint(MDB_RDONLY))
     env = LMDB.Environment(path; mapsize, maxreaders = readers, maxdbs = dbs,
                            flags = envflags)
-    dbi = LMDB.start(env) do txn
-        LMDB.open(txn)
+    dbi = Transaction(env) do txn
+        Database(txn)
     end
     LMDBDict{K,V}(env, dbi)
 end
@@ -53,8 +53,8 @@ end
 
 function cursor_do(f, d; readonly = false)
     txnflags = readonly ? Cuint(LMDB.MDB_RDONLY) : Cuint(0)
-    LMDB.start(d.env, flags = txnflags) do txn
-        LMDB.open(txn, d.dbi) do cur
+    Transaction(d.env; flags = txnflags) do txn
+        Cursor(txn, d.dbi) do cur
             f(cur)
         end
     end
@@ -62,7 +62,7 @@ end
 
 function txn_dbi_do(f, d; readonly = false)
     txnflags = readonly ? Cuint(LMDB.MDB_RDONLY) : Cuint(0)
-    LMDB.start(d.env, flags = txnflags) do txn
+    Transaction(d.env; flags = txnflags) do txn
         f(txn, d.dbi)
     end
 end
@@ -96,8 +96,8 @@ end
 # committed and the cursor closed; on early break/throw, Cursor's and
 # Transaction's finalizers reclaim them.
 function Base.iterate(d::LMDBDict)
-    txn = LMDB.start(d.env; flags = Cuint(MDB_RDONLY))
-    cur = LMDB.open(txn, d.dbi)
+    txn = Transaction(d.env; flags = Cuint(MDB_RDONLY))
+    cur = Cursor(txn, d.dbi)
     return iter_step(d, txn, cur, MDB_FIRST)
 end
 Base.iterate(d::LMDBDict, (txn, cur)::Tuple{Transaction,Cursor}) =
@@ -121,8 +121,6 @@ function iter_step(::LMDBDict{K,V}, txn::Transaction, cur::Cursor,
             Base.read(LMDB.MDBValueIO(v_ref[]), V), (txn, cur))
 end
 
-Base.IteratorSize(::Type{<:LMDBDict}) = Base.HasLength()
-
 function Base.length(d::LMDBDict)
     txn_dbi_do(d, readonly = true) do txn, dbi
         Int(LMDB.stat(txn, dbi).entries)
@@ -133,14 +131,14 @@ Base.isempty(d::LMDBDict) = iszero(length(d))
 
 function Base.getindex(d::LMDBDict{K,V}, k) where {K,V}
     txn_dbi_do(d, readonly = true) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v = LMDB.get(txn, dbi, convert(K, k), V, nothing)
         v === nothing ? throw(KeyError(k)) : v
     end
 end
 
 function Base.haskey(d::LMDBDict{K,V}, k) where {K,V}
     txn_dbi_do(d, readonly = true) do txn, dbi
-        LMDB.tryget(txn, dbi, convert(K, k), V) !== nothing
+        LMDB.get(txn, dbi, convert(K, k), V, nothing) !== nothing
     end
 end
 
@@ -152,14 +150,14 @@ end
 
 function Base.get(f::Base.Callable, d::LMDBDict{K,V}, k) where {K,V}
     txn_dbi_do(d, readonly = true) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v = LMDB.get(txn, dbi, convert(K, k), V, nothing)
         v === nothing ? f() : v
     end
 end
 
 function Base.get!(d::LMDBDict{K,V}, k, default) where {K,V}
     txn_dbi_do(d) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v = LMDB.get(txn, dbi, convert(K, k), V, nothing)
         v !== nothing && return v
         LMDB.put!(txn, dbi, convert(K, k), convert(V, default))
         return default
@@ -168,7 +166,7 @@ end
 
 function Base.get!(f::Base.Callable, d::LMDBDict{K,V}, k) where {K,V}
     txn_dbi_do(d) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v = LMDB.get(txn, dbi, convert(K, k), V, nothing)
         v !== nothing && return v
         default = f()
         LMDB.put!(txn, dbi, convert(K, k), convert(V, default))
@@ -185,11 +183,7 @@ end
 
 function Base.delete!(d::LMDBDict{K}, k) where K
     txn_dbi_do(d) do txn, dbi
-        try
-            LMDB.delete!(txn, dbi, convert(K, k))
-        catch e
-            e isa LMDBError && LMDB.is_notfound(e) || rethrow()
-        end
+        LMDB.delete!(txn, dbi, convert(K, k))
     end
     return d
 end
@@ -211,7 +205,7 @@ end
 # `pop!(d)` without a key: pops the first entry, mirroring `Base.pop!(::Dict)`.
 function Base.pop!(d::LMDBDict{K,V}) where {K,V}
     txn_dbi_do(d) do txn, dbi
-        LMDB.open(txn, dbi) do cur
+        Cursor(txn, dbi) do cur
             LMDB.seek!(cur, K) === nothing &&
                 throw(ArgumentError("LMDBDict must be non-empty"))
             pair = LMDB.item(cur, K, V)
@@ -232,6 +226,17 @@ end
 # `==`, `hash`, `in(::Pair, d)` etc. all kick in for free now that
 # `iterate` and `length` are defined.
 
+# An LMDBDict needs an on-disk directory to live in, so there's no
+# meaningful zero-argument `empty(d)` (or `copy(d)`, which `Base`
+# implements as `merge!(empty(d), d)`). Refuse with an explicit error
+# so users reach for `Dict(d)` for an in-memory snapshot or
+# `copy(d.env, path)` for an on-disk clone.
+const _NO_EMPTY_LMDBDICT =
+    "LMDBDict has no path-less empty form; use Dict(d) for an in-memory " *
+    "snapshot, or copy(d.env, path) for an on-disk clone"
+Base.empty(::LMDBDict, ::Type, ::Type) = throw(ArgumentError(_NO_EMPTY_LMDBDICT))
+Base.copy(::LMDBDict) = throw(ArgumentError(_NO_EMPTY_LMDBDICT))
+
 # Override the bulk-update fallbacks so they land in a single LMDB write
 # txn. AbstractDict's default `merge!` / `mergewith!` / `filter!` call
 # `d[k]=v` / `delete!(d,k)` in a loop, and each of those opens its own
@@ -249,7 +254,7 @@ function Base.mergewith!(combine, d::LMDBDict{K,V}, others::AbstractDict...) whe
     txn_dbi_do(d) do txn, dbi
         for other in others, (k, v) in other
             kk = convert(K, k)
-            existing = LMDB.tryget(txn, dbi, kk, V)
+            existing = LMDB.get(txn, dbi, kk, V, nothing)
             new = existing === nothing ? convert(V, v) :
                                           convert(V, combine(existing, v))
             LMDB.put!(txn, dbi, kk, new)
@@ -261,7 +266,7 @@ end
 function Base.filter!(f, d::LMDBDict{K,V}) where {K,V}
     txn_dbi_do(d) do txn, dbi
         to_delete = K[]
-        LMDB.open(txn, dbi) do cur
+        Cursor(txn, dbi) do cur
             LMDB.walk(cur, K, V) do k, v
                 f(k => v) || push!(to_delete, k)
             end

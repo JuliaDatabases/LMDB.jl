@@ -1,25 +1,20 @@
-export Cursor, walk,
-       seek!, seek_last!, seek_range!, next!, prev!,
-       seek_first_dup!, seek_last_dup!,
-       next_dup!, prev_dup!, next_nodup!, prev_nodup!
-@public transaction, database, key, value, item
+@public Cursor,
+        seek!, seek_last!, seek_range!, next!, prev!,
+        seek_first_dup!, seek_last_dup!,
+        next_dup!, prev_dup!, next_nodup!, prev_nodup!,
+        walk, transaction, database, key, value, item
 
 """
 A handle to a cursor structure for navigating through a database.
 
-A `Cursor` keeps references to its parent `Transaction` and `DBI`, both
+A `Cursor` keeps references to its parent `Transaction` and `Database`, both
 to expose them via `transaction(cur)` / `database(cur)` and to keep the
 txn alive under GC. The cursor's finalizer closes any still-open handle.
 """
 mutable struct Cursor
     handle::Ptr{MDB_cursor}
     txn::Transaction
-    dbi::DBI
-    function Cursor(txn::Transaction, dbi::DBI, h::Ptr{MDB_cursor})
-        c = new(h, txn, dbi)
-        finalizer(close, c)
-        return c
-    end
+    dbi::Database
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_cursor}}, c::Cursor) = c.handle
@@ -27,16 +22,28 @@ Base.unsafe_convert(::Type{Ptr{MDB_cursor}}, c::Cursor) = c.handle
 "Check if cursor is open"
 isopen(cur::Cursor) = cur.handle != C_NULL
 
-"Create a cursor"
-function open(txn::Transaction, dbi::DBI)
+"""
+    Cursor(txn::Transaction, dbi::Database) -> Cursor
+
+Open a cursor over `dbi` inside `txn`. The cursor is freed by its
+finalizer if `close` isn't called explicitly.
+"""
+function Cursor(txn::Transaction, dbi::Database)
     cur_ptr_ref = Ref{Ptr{MDB_cursor}}(C_NULL)
     mdb_cursor_open(txn, dbi, cur_ptr_ref)
-    return Cursor(txn, dbi, cur_ptr_ref[])
+    cur = Cursor(cur_ptr_ref[], txn, dbi)
+    finalizer(close, cur)
+    return cur
 end
 
-"Wrapper of Cursor `open` for `do` construct"
-function open(f::Function, txn::Transaction, dbi::DBI)
-    cur = open(txn, dbi)
+"""
+    Cursor(f::Function, txn::Transaction, dbi::Database) -> result
+
+`do`-block form: open a cursor, run `f(cur)`, close on the way out.
+Returns whatever `f` returns.
+"""
+function Cursor(f::Function, txn::Transaction, dbi::Database)
+    cur = Cursor(txn, dbi)
     try
         f(cur)
     finally
@@ -73,38 +80,27 @@ Base.show(io::IO, cur::Cursor) =
     print(io, "Cursor(", isopen(cur) ? "open" : "closed", ")")
 
 
-# Populate `key_ref` with `searchkey`'s data. Returns the heap-rooted argument
-# that the caller must keep alive across the surrounding ccall (use
-# `GC.@preserve`); the pointer baked into `key_ref` aliases its data.
-@inline function setup_key!(key_ref, k::String)
-    key_ref[] = MDB_val(Csize_t(sizeof(k)),
-                         Ptr{Cvoid}(Base.unsafe_convert(Ptr{UInt8}, k)))
-    return k
-end
-@inline function setup_key!(key_ref, k::AbstractArray{T}) where {T}
-    key_ref[] = MDB_val(Csize_t(sizeof(T) * length(k)),
-                         Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, k)))
-    return k
-end
-@inline function setup_key!(key_ref, k::Base.RefValue{T}) where {T}
-    key_ref[] = MDB_val(Csize_t(sizeof(T)),
-                         Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, k)))
-    return k
-end
-@inline function setup_key!(key_ref, k::T) where T
-    isbitstype(T) || throw(MethodError(setup_key!, (key_ref, k)))
-    return setup_key!(key_ref, Ref(k))
+# Fill `dst` with the MDB_val that the cconvert/unsafe_convert ladder
+# in `common.jl` would build for `k`. `k`'s storage must outlive the
+# eventual ccall (use `GC.@preserve`); the pointer baked into `dst`
+# aliases its data.
+@inline function fill_mdbval!(dst::Ref{MDB_val}, k)
+    arg = Base.cconvert(Ptr{MDB_val}, k)
+    dst[] = unsafe_load(Base.unsafe_convert(Ptr{MDB_val}, arg))
+    return arg
 end
 
 # Position the cursor with `op`. Returns `true` on success, `false` on
-# `MDB_NOTFOUND`. Throws on other errors.
+# `MDB_NOTFOUND`. Throws on other errors. `key_ref` is used both to feed
+# the search key in (for SET_KEY / SET_RANGE) and to receive the matched
+# key on the way out.
 @inline function cursor_seek!(cur::Cursor, key_ref::Ref{MDB_val},
                                val_ref::Ref{MDB_val}, op::MDB_cursor_op,
                                searchkey)
     if searchkey === nothing
         ret = unchecked_mdb_cursor_get(cur, key_ref, val_ref, op)
     else
-        held = setup_key!(key_ref, searchkey)
+        held = fill_mdbval!(key_ref, searchkey)
         ret = GC.@preserve held unchecked_mdb_cursor_get(cur, key_ref, val_ref, op)
     end
     ret == MDB_NOTFOUND && return false
@@ -331,7 +327,7 @@ function walk(f, cur::Cursor; from = nothing)
     if from === nothing
         ret = unchecked_mdb_cursor_get(cur, key_ref, val_ref, MDB_FIRST)
     else
-        held = setup_key!(key_ref, from)
+        held = fill_mdbval!(key_ref, from)
         ret = GC.@preserve held unchecked_mdb_cursor_get(cur, key_ref, val_ref,
                                                           MDB_SET_RANGE)
     end
@@ -348,7 +344,7 @@ end
 """
     walk(f, cur::Cursor, ::Type{K}, ::Type{V}=K; from = nothing)
 
-Typed overload of `walk` mirroring the `tryget(txn, dbi, key, T)` /
+Typed overload of `walk` mirroring the `get(txn, dbi, key, T, default)` /
 `key(cur, T)` / `seek!(cur, key, T)` shape used elsewhere in the Julia wrappers.
 Decodes each key and value through `read(::MDBValueIO, K)` /
 `read(::MDBValueIO, V)` before passing them to `f(k::K, v::V)`. Same
@@ -357,7 +353,7 @@ stop contract as the raw form: `f` returning `false` halts iteration.
 Define a custom `Base.read(io::LMDB.MDBValueIO, ::Type{T})` to control
 what gets decoded (for example, a `(atime, size)` tuple from a framed
 value, or a zero-copy view). This is the iteration counterpart to
-`tryget(..., T)`.
+`get(..., T, nothing)`.
 """
 function walk(f, cur::Cursor, ::Type{K}, ::Type{V} = K;
               from = nothing) where {K, V}

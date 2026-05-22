@@ -4,16 +4,16 @@
 CurrentModule = LMDB
 ```
 
-A `Cursor` is a positioned iterator over a `DBI`. Use it for ordered
+A `Cursor` is a positioned iterator over a `Database`. Use it for ordered
 scans, range queries, or to amortise the per-lookup overhead of
 `mdb_get` across many keys.
 
 ## Opening a cursor
 
 ```julia
-start(env; flags = LMDB.MDB_RDONLY) do txn
-    open(txn) do dbi
-        open(txn, dbi) do cur
+Transaction(env; flags = LMDB.MDB_RDONLY) do txn
+    Database(txn) do dbi
+        Cursor(txn, dbi) do cur
             # use cur
         end
     end
@@ -66,9 +66,9 @@ A typical pattern for "all keys with a given prefix":
 
 ```julia
 prefix = "users/"
-start(env; flags = LMDB.MDB_RDONLY) do txn
-    open(txn) do dbi
-        open(txn, dbi) do cur
+Transaction(env; flags = LMDB.MDB_RDONLY) do txn
+    Database(txn) do dbi
+        Cursor(txn, dbi) do cur
             k = seek_range!(cur, prefix, String)
             while k !== nothing && startswith(k, prefix)
                 v = LMDB.value(cur, String)
@@ -113,9 +113,10 @@ Use the untyped form when you want to inspect raw byte sizes, copy
 slices, or feed a custom decoder. The data pointers are into LMDB's
 mmap and are valid only inside the callback (and only for the
 surrounding txn). The typed form is the iteration analogue of
-`tryget(..., T)` and works for any `T` for which `Base.read(io::IO,
-::Type{T})` (or `Base.read(io::LMDB.MDBValueIO, ::Type{T})`) is
-defined. See [Custom value decoding](@ref).
+`get(..., T, nothing)` and works for any `T` for which
+`Base.read(io::IO, ::Type{T})` (or
+`Base.read(io::LMDB.MDBValueIO, ::Type{T})`) is defined. See
+[Custom value decoding](@ref).
 
 ## Cursor mutation
 
@@ -134,7 +135,7 @@ key (1 in non-DUPSORT databases).
 
 ## Custom value decoding
 
-`tryget`, `get`, `key`, `value`, `item`, and typed `walk` all funnel
+`get`, `key`, `value`, `item`, and typed `walk` all funnel
 through `Base.read(io::IO, ::Type{T})` against an
 [`MDBValueIO`](@ref LMDB.MDBValueIO). The defaults cover Base's
 primitive numeric types (`Int8`/…/`Float64`, `Bool`, `Char`, `Ptr`),
@@ -153,7 +154,7 @@ function Base.read(io::IO, ::Type{PrefixedBlob})
 end
 
 # now usable everywhere a value-type parameter is accepted:
-LMDB.tryget(txn, dbi, key, PrefixedBlob)
+LMDB.get(txn, dbi, key, PrefixedBlob, nothing)
 walk(cur, String, PrefixedBlob) do k, blob
     handle(k, blob)
 end
@@ -174,8 +175,8 @@ expensive. Park the txn with [`reset`](@ref Base.reset(::LMDB.Transaction))
 and refresh both the txn and the cursor with `renew(txn, cur)`:
 
 ```julia
-txn = start(env; flags = LMDB.MDB_RDONLY)
-cur = open(txn, dbi)
+txn = Transaction(env; flags = LMDB.MDB_RDONLY)
+cur = Cursor(txn, dbi)
 while running
     ...                # use cur
     reset(txn)

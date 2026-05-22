@@ -4,31 +4,31 @@
 CurrentModule = LMDB
 ```
 
-A `DBI` is a handle to one B-tree inside an environment. By default an
+A `Database` is a handle to one B-tree inside an environment. By default an
 env has a single anonymous database (the "main DB"); pass `maxdbs > 0`
 to `Environment` to support multiple named sub-databases.
 
-## Opening a DBI
+## Opening a Database
 
 ```julia
-dbi = open(txn)                      # main (unnamed) DB
-dbi = open(txn, "users")             # named sub-DB; needs maxdbs >= 1
-dbi = open(txn, "edges"; flags = LMDB.MDB_CREATE | LMDB.MDB_DUPSORT)
+dbi = Database(txn)                      # main (unnamed) DB
+dbi = Database(txn, "users")             # named sub-DB; needs maxdbs >= 1
+dbi = Database(txn, "edges"; flags = LMDB.MDB_CREATE | LMDB.MDB_DUPSORT)
 ```
 
-The do-block form closes the DBI on the way out:
+The do-block form closes the Database on the way out:
 
 ```julia
-open(txn, "users") do dbi
+Database(txn, "users") do dbi
     put!(txn, dbi, "1", "Ada")
 end
 ```
 
-In practice you'll rarely *want* to close a DBI handle explicitly. The
+In practice you'll rarely *want* to close a Database handle explicitly. The
 env owns it, and `mdb_dbi_close` is documented as rarely useful. The
-env's finalizer cascades through any open DBI handles.
+env's finalizer cascades through any open Database handles.
 
-## DBI flags
+## Database flags
 
 `flags` accepts a bitwise-or of:
 
@@ -44,12 +44,11 @@ env's finalizer cascades through any open DBI handles.
 
 ## Reads
 
-Every read takes a value-type parameter `T`. The default forms are:
+Every read takes a value-type parameter `T`. The two shapes are:
 
 ```julia
 get(txn, dbi, key, T)               # throws LMDBError(MDB_NOTFOUND) on miss
-tryget(txn, dbi, key, T)            # nothing on miss
-get(txn, dbi, key, T, default)      # default on miss
+get(txn, dbi, key, T, default)      # returns `default` on miss
 ```
 
 `T` is anything `read(::LMDB.MDBValueIO, ::Type{T})` knows how to
@@ -57,12 +56,12 @@ decode: `String`, `Vector{E}` for any bitstype `E`, or any bitstype
 scalar.
 
 ```julia
-tryget(txn, dbi, "name", String)            # → Union{String, Nothing}
-tryget(txn, dbi, key,    Vector{Float32})   # → Union{Vector{Float32}, Nothing}
-tryget(txn, dbi, key,    UInt64)            # → Union{UInt64, Nothing}
+get(txn, dbi, "name", String, nothing)              # → Union{String, Nothing}
+get(txn, dbi, key,    Vector{Float32}, nothing)     # → Union{Vector{Float32}, Nothing}
+get(txn, dbi, key,    UInt64,         zero(UInt64)) # → UInt64
 ```
 
-`tryget` is the cheap one: it inspects the raw status code and swallows
+The default-form `get` inspects the raw status code and swallows
 `MDB_NOTFOUND` without throwing.
 
 ## Writes
@@ -86,8 +85,8 @@ Useful write flags:
 
 ```julia
 # Bulk import in sorted order:
-start(env) do txn
-    open(txn) do dbi
+Transaction(env) do txn
+    Database(txn) do dbi
         for (k, v) in sorted_pairs
             put!(txn, dbi, k, v; flags = LMDB.MDB_APPEND)
         end
