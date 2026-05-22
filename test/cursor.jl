@@ -157,8 +157,8 @@ mktempdir() do dir
                     LMDB.delete!(cur)             # removes "b"
                     @test_throws LMDBError LMDB.delete!(cur)  # no live entry
                 end
-                @test LMDB.tryget(txn, dbi, "a", String) === nothing
-                @test LMDB.tryget(txn, dbi, "b", String) === nothing
+                @test get(txn, dbi, "a", String, nothing) === nothing
+                @test get(txn, dbi, "b", String, nothing) === nothing
             end
         end
     end

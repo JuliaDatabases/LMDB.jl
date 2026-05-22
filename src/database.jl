@@ -1,4 +1,4 @@
-export DBI, tryget, put_reserved!
+export DBI, put_reserved!
 @public flags
 
 """
@@ -153,28 +153,32 @@ function stat(txn::Transaction, dbi::DBI)
     return stat_namedtuple(s_ref[])
 end
 
-"""Get an item from a database. Throws `LMDBError` if `key` is not present."""
+"""
+    get(txn::Transaction, dbi::DBI, key, ::Type{T}) -> T
+
+Get an item from a database, decoded as `T`. Throws `LMDBError` if
+`key` is not present. Analogous to `getindex(d, k)` on a regular
+`AbstractDict`.
+"""
 @inline function get(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
     val_ref = Ref(MDBValue())
     mdb_get(txn, dbi, key, val_ref)
     return Base.read(MDBValueIO(val_ref[]), T)
 end
 
-"""Get an item from a database, returning `nothing` if `key` is not present.
-Use this in preference to `get` + try/catch when a missing key is expected."""
-@inline function tryget(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
+"""
+    get(txn::Transaction, dbi::DBI, key, ::Type{T}, default) -> Union{T,typeof(default)}
+
+Get an item from a database, returning `default` if `key` is not
+present. Mirrors `Base.get(dict, key, default)`. For the
+`Union{T,Nothing}` shape, pass `nothing` as `default`.
+"""
+@inline function get(txn::Transaction, dbi::DBI, key, ::Type{T}, default) where T
     val_ref = Ref(MDBValue())
     ret = unchecked_mdb_get(txn, dbi, key, val_ref)
-    ret == MDB_NOTFOUND && return nothing
+    ret == MDB_NOTFOUND && return default
     iszero(ret) || throw(LMDBError(ret))
     return Base.read(MDBValueIO(val_ref[]), T)
-end
-
-"""Get an item from a database, returning `default` if `key` is not present.
-The signature mirrors `Base.get(dict, key, default)`."""
-function get(txn::Transaction, dbi::DBI, key, ::Type{T}, default) where T
-    v = tryget(txn, dbi, key, T)
-    v === nothing ? default : v
 end
 
 """
@@ -187,7 +191,7 @@ transaction.
 """
 function replace!(txn::Transaction, dbi::DBI, key, val,
                   ::Type{V}=typeof(val)) where V
-    old = tryget(txn, dbi, key, V)
+    old = get(txn, dbi, key, V, nothing)
     put!(txn, dbi, key, val)
     return old
 end
@@ -199,7 +203,7 @@ Atomically read and delete the value at `key`, returning it (decoded as
 `T`) or `nothing` if `key` was not present.
 """
 function pop!(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
-    v = tryget(txn, dbi, key, T)
+    v = get(txn, dbi, key, T, nothing)
     v === nothing && return nothing
     delete!(txn, dbi, key)
     return v

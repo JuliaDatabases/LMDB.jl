@@ -24,7 +24,7 @@ The do-block form commits on normal return and aborts on throw:
 result = Transaction(env) do txn
     DBI(txn) do dbi
         put!(txn, dbi, "k", "v")
-        tryget(txn, dbi, "k", String)
+        get(txn, dbi, "k", String, nothing)
     end
 end                                       # commits if no throw
 ```
@@ -52,7 +52,7 @@ txn = Transaction(env; flags = LMDB.MDB_RDONLY)
 for batch in batches
     DBI(txn) do dbi
         for k in batch
-            v = tryget(txn, dbi, k, String)
+            v = get(txn, dbi, k, String, nothing)
             handle(k, v)
         end
     end
@@ -84,7 +84,7 @@ Transaction(env) do parent
         catch
         end
         # "before" survives; "during" was rolled back
-        @assert tryget(parent, dbi, "during", String) === nothing
+        @assert get(parent, dbi, "during", String, nothing) === nothing
     end
 end
 ```

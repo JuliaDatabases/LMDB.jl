@@ -26,7 +26,6 @@ Base.stat(::Transaction, ::DBI)
 ```@docs
 Base.get(::Transaction, ::DBI, ::Any, ::Type{T}) where T
 Base.get(::Transaction, ::DBI, ::Any, ::Type{T}, ::Any) where T
-tryget
 ```
 
 `get(txn, dbi, key, T, default)` falls back to `default` if `key` is

@@ -70,8 +70,8 @@ A read-only `IO` view over an LMDB-owned `MDB_val`. Wraps the
 package's typed-read path is the standard `Base.read(io, T)`.
 
 Any `T` for which `Base.read(io::IO, ::Type{T})` is defined can be
-passed to `tryget`, `get`, `key`, `value`, `item`, typed `walk`,
-`pop!`, and `replace!`. Out of the box this covers everything Base
+passed to `get`, `key`, `value`, `item`, typed `walk`, `pop!`, and
+`replace!`. Out of the box this covers everything Base
 ships: the primitive numeric types (`Int8`/…/`Int128`, `Float16`/…/
 `Float64`, `Bool`, `Char`, `Ptr{T}`) plus `String`, all zero-allocation
 thanks to the `@inline` `unsafe_read` override below. The package adds
@@ -91,7 +91,7 @@ sources:
         return read(io, Vector{UInt8})
     end
 
-    LMDB.tryget(txn, dbi, key, PrefixedBlob)   # → Union{Vector{UInt8}, Nothing}
+    LMDB.get(txn, dbi, key, PrefixedBlob, nothing)   # → Union{Vector{UInt8}, Nothing}
 
 For an `isbitstype` struct `T`, the one-liner is the standard Base
 pattern:

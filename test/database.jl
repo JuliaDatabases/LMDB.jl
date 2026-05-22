@@ -71,8 +71,8 @@ mktempdir() do dbname
     end
 end
 
-# tryget / get-with-default / stat(txn, dbi) — fresh env so the entry
-# count is deterministic.
+# get-with-default / stat(txn, dbi) — fresh env so the entry count is
+# deterministic.
 mktempdir() do dir
     Environment(dir) do env
         Transaction(env) do txn
@@ -80,8 +80,8 @@ mktempdir() do dir
                 LMDB.put!(txn, dbi, "k1", "v1")
                 LMDB.put!(txn, dbi, "k2", "v2")
 
-                @test LMDB.tryget(txn, dbi, "k1", String) == "v1"
-                @test LMDB.tryget(txn, dbi, "missing", String) === nothing
+                @test get(txn, dbi, "k1", String, nothing) == "v1"
+                @test get(txn, dbi, "missing", String, nothing) === nothing
                 @test get(txn, dbi, "k2", String, "fallback") == "v2"
                 @test get(txn, dbi, "missing", String, "fallback") == "fallback"
 
@@ -112,7 +112,7 @@ mktempdir() do dir
                         buf[8 + i] = UInt8(i)
                     end
                 end
-                raw = LMDB.tryget(txn, dbi, "framed", Vector{UInt8})
+                raw = get(txn, dbi, "framed", Vector{UInt8}, nothing)
                 @test length(raw) == 16
                 @test ltoh(reinterpret(UInt64, raw[1:8])[1]) ==
                       UInt64(0xdeadbeef)
@@ -139,7 +139,7 @@ mktempdir() do dir
 
                 # Present key → true, returns and entry is gone.
                 @test LMDB.delete!(txn, dbi, "k1") === true
-                @test LMDB.tryget(txn, dbi, "k1", String) === nothing
+                @test get(txn, dbi, "k1", String, nothing) === nothing
 
                 # Missing key → false, no exception.
                 @test LMDB.delete!(txn, dbi, "ghost") === false
@@ -160,15 +160,15 @@ mktempdir() do dir
             DBI(txn) do dbi
                 # replace! on a missing key returns nothing and creates the entry.
                 @test LMDB.replace!(txn, dbi, "k", "v1") === nothing
-                @test LMDB.tryget(txn, dbi, "k", String) == "v1"
+                @test get(txn, dbi, "k", String, nothing) == "v1"
 
                 # replace! on an existing key returns the old value.
                 @test LMDB.replace!(txn, dbi, "k", "v2") == "v1"
-                @test LMDB.tryget(txn, dbi, "k", String) == "v2"
+                @test get(txn, dbi, "k", String, nothing) == "v2"
 
                 # pop! returns the value and deletes.
                 @test LMDB.pop!(txn, dbi, "k", String) == "v2"
-                @test LMDB.tryget(txn, dbi, "k", String) === nothing
+                @test get(txn, dbi, "k", String, nothing) === nothing
                 # pop! on a missing key returns nothing.
                 @test LMDB.pop!(txn, dbi, "k", String) === nothing
             end
@@ -176,7 +176,7 @@ mktempdir() do dir
     end
 end
 
-# Round-trip a custom bitstype through put!/tryget/walk using only the
+# Round-trip a custom bitstype through put!/get/walk using only the
 # IO-based extension point (`Base.read(io::IO, ::Type{Point2D})`,
 # defined at module scope above).
 mktempdir() do dir
@@ -186,13 +186,13 @@ mktempdir() do dir
                 LMDB.put!(txn, dbi, "origin", Point2D(0f0, 0f0))
                 LMDB.put!(txn, dbi, "p1",     Point2D(1.5f0, 2.5f0))
 
-                @test LMDB.tryget(txn, dbi, "p1", Point2D)     == Point2D(1.5f0, 2.5f0)
-                @test LMDB.tryget(txn, dbi, "origin", Point2D) == Point2D(0f0, 0f0)
+                @test get(txn, dbi, "p1", Point2D, nothing)     == Point2D(1.5f0, 2.5f0)
+                @test get(txn, dbi, "origin", Point2D, nothing) == Point2D(0f0, 0f0)
                 @test get(txn, dbi, "p1", Point2D)             == Point2D(1.5f0, 2.5f0)
 
                 # The Vector{E} overload also works for any bitstype E,
                 # without the user defining anything extra.
-                @test LMDB.tryget(txn, dbi, "p1", Vector{Point2D}) ==
+                @test get(txn, dbi, "p1", Vector{Point2D}, nothing) ==
                       [Point2D(1.5f0, 2.5f0)]
 
                 # Typed walk decodes both K and V through Base.read.
@@ -222,7 +222,7 @@ mktempdir() do dir
                     unsafe_store!(Ptr{UInt32}(pointer(buf)), FRAME_MAGIC)
                     unsafe_store!(Ptr{UInt64}(pointer(buf) + 4), htol(UInt64(0x1234_5678)))
                 end
-                @test LMDB.tryget(txn, dbi, "framed", FramedU64) ==
+                @test get(txn, dbi, "framed", FramedU64, nothing) ==
                       FramedU64(0x1234_5678)
             end
         end
@@ -239,16 +239,16 @@ mktempdir() do dir
                 ra_key = reinterpret(UInt8, UInt64[0xdeadbeefcafef00d])
                 @test !(ra_key isa Array)
                 LMDB.put!(txn, dbi, ra_key, "v-reinterpret")
-                @test LMDB.tryget(txn, dbi, ra_key, String) == "v-reinterpret"
-                @test LMDB.tryget(txn, dbi, collect(ra_key), String) == "v-reinterpret"
+                @test get(txn, dbi, ra_key, String, nothing) == "v-reinterpret"
+                @test get(txn, dbi, collect(ra_key), String, nothing) == "v-reinterpret"
 
                 # Contiguous SubArray.
                 backing = collect(0x01:0x10)
                 sv_key = view(backing, 4:8)
                 @test !(sv_key isa Array)
                 LMDB.put!(txn, dbi, sv_key, "v-subarray")
-                @test LMDB.tryget(txn, dbi, sv_key, String) == "v-subarray"
-                @test LMDB.tryget(txn, dbi, collect(sv_key), String) == "v-subarray"
+                @test get(txn, dbi, sv_key, String, nothing) == "v-subarray"
+                @test get(txn, dbi, collect(sv_key), String, nothing) == "v-subarray"
             end
         end
     end

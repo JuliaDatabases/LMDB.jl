@@ -63,10 +63,10 @@ mktempdir() do dir
         @test first.(entries) == ["key$i" for i in 1:5]
         @test all(e -> e[2] == sizeof("value1"), entries)
 
-        # tryget on present vs missing — common cuTile-shaped read path.
+        # get-with-nothing on present vs missing — common cuTile-shaped read path.
         Transaction(env; flags = LMDB.MDB_RDONLY) do txn
-            @test LMDB.tryget(txn, dbi, "key3", String) == "value3"
-            @test LMDB.tryget(txn, dbi, "ghost", String) === nothing
+            @test get(txn, dbi, "key3", String, nothing) == "value3"
+            @test get(txn, dbi, "ghost", String, nothing) === nothing
         end
 
         # Batch delete: present keys return true, missing return false,
@@ -80,13 +80,13 @@ mktempdir() do dir
         end
         @test deleted == 2
         Transaction(env; flags = LMDB.MDB_RDONLY) do txn
-            @test LMDB.tryget(txn, dbi, "key1", String) === nothing
-            @test LMDB.tryget(txn, dbi, "key2", String) == "value2"
-            @test LMDB.tryget(txn, dbi, "key3", String) === nothing
+            @test get(txn, dbi, "key1", String, nothing) === nothing
+            @test get(txn, dbi, "key2", String, nothing) == "value2"
+            @test get(txn, dbi, "key3", String, nothing) === nothing
         end
 
         # MDBValueIO extension: write an 8-byte-prefixed framed value
-        # and read it back via `tryget(..., AtimedBlob)`, getting the
+        # and read it back via `get(..., AtimedBlob, nothing)`, getting the
         # payload tail with one alloc + skip + copy, no slicing.
         payload = Vector{UInt8}("cubin-bytes-here")
         atime = UInt64(0xdeadbeefcafebabe)
@@ -94,8 +94,8 @@ mktempdir() do dir
             LMDB.put!(txn, dbi, "framed", pack_atimed(atime, payload))
         end
         Transaction(env; flags = LMDB.MDB_RDONLY) do txn
-            @test LMDB.tryget(txn, dbi, "framed", AtimedBlob) == payload
-            @test LMDB.tryget(txn, dbi, "ghost",  AtimedBlob) === nothing
+            @test get(txn, dbi, "framed", AtimedBlob, nothing) == payload
+            @test get(txn, dbi, "ghost",  AtimedBlob, nothing) === nothing
         end
     finally
         close(env)

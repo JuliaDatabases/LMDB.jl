@@ -131,14 +131,14 @@ Base.isempty(d::LMDBDict) = iszero(length(d))
 
 function Base.getindex(d::LMDBDict{K,V}, k) where {K,V}
     txn_dbi_do(d, readonly = true) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v = LMDB.get(txn, dbi, convert(K, k), V, nothing)
         v === nothing ? throw(KeyError(k)) : v
     end
 end
 
 function Base.haskey(d::LMDBDict{K,V}, k) where {K,V}
     txn_dbi_do(d, readonly = true) do txn, dbi
-        LMDB.tryget(txn, dbi, convert(K, k), V) !== nothing
+        LMDB.get(txn, dbi, convert(K, k), V, nothing) !== nothing
     end
 end
 
@@ -150,14 +150,14 @@ end
 
 function Base.get(f::Base.Callable, d::LMDBDict{K,V}, k) where {K,V}
     txn_dbi_do(d, readonly = true) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v = LMDB.get(txn, dbi, convert(K, k), V, nothing)
         v === nothing ? f() : v
     end
 end
 
 function Base.get!(d::LMDBDict{K,V}, k, default) where {K,V}
     txn_dbi_do(d) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v = LMDB.get(txn, dbi, convert(K, k), V, nothing)
         v !== nothing && return v
         LMDB.put!(txn, dbi, convert(K, k), convert(V, default))
         return default
@@ -166,7 +166,7 @@ end
 
 function Base.get!(f::Base.Callable, d::LMDBDict{K,V}, k) where {K,V}
     txn_dbi_do(d) do txn, dbi
-        v = LMDB.tryget(txn, dbi, convert(K, k), V)
+        v = LMDB.get(txn, dbi, convert(K, k), V, nothing)
         v !== nothing && return v
         default = f()
         LMDB.put!(txn, dbi, convert(K, k), convert(V, default))
@@ -255,7 +255,7 @@ function Base.mergewith!(combine, d::LMDBDict{K,V}, others::AbstractDict...) whe
     txn_dbi_do(d) do txn, dbi
         for other in others, (k, v) in other
             kk = convert(K, k)
-            existing = LMDB.tryget(txn, dbi, kk, V)
+            existing = LMDB.get(txn, dbi, kk, V, nothing)
             new = existing === nothing ? convert(V, v) :
                                           convert(V, combine(existing, v))
             LMDB.put!(txn, dbi, kk, new)

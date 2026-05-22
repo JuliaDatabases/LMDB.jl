@@ -39,7 +39,7 @@ since there is nothing to check.
 
 ## Customisation point: `MDBValueIO`
 
-`tryget`, `get`, `key`, `value`, `item`, typed `walk`, `pop!`, and
+`get`, `key`, `value`, `item`, typed `walk`, `pop!`, and
 `replace!` all go through `read(::MDBValueIO, T)` to decode an
 `MDB_val` into a Julia value. Define a `Base.read` method on
 `MDBValueIO` to plug in a custom representation. See [Cursors](@ref)

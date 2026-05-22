@@ -113,9 +113,10 @@ Use the untyped form when you want to inspect raw byte sizes, copy
 slices, or feed a custom decoder. The data pointers are into LMDB's
 mmap and are valid only inside the callback (and only for the
 surrounding txn). The typed form is the iteration analogue of
-`tryget(..., T)` and works for any `T` for which `Base.read(io::IO,
-::Type{T})` (or `Base.read(io::LMDB.MDBValueIO, ::Type{T})`) is
-defined. See [Custom value decoding](@ref).
+`get(..., T, nothing)` and works for any `T` for which
+`Base.read(io::IO, ::Type{T})` (or
+`Base.read(io::LMDB.MDBValueIO, ::Type{T})`) is defined. See
+[Custom value decoding](@ref).
 
 ## Cursor mutation
 
@@ -134,7 +135,7 @@ key (1 in non-DUPSORT databases).
 
 ## Custom value decoding
 
-`tryget`, `get`, `key`, `value`, `item`, and typed `walk` all funnel
+`get`, `key`, `value`, `item`, and typed `walk` all funnel
 through `Base.read(io::IO, ::Type{T})` against an
 [`MDBValueIO`](@ref LMDB.MDBValueIO). The defaults cover Base's
 primitive numeric types (`Int8`/…/`Float64`, `Bool`, `Char`, `Ptr`),
@@ -153,7 +154,7 @@ function Base.read(io::IO, ::Type{PrefixedBlob})
 end
 
 # now usable everywhere a value-type parameter is accepted:
-LMDB.tryget(txn, dbi, key, PrefixedBlob)
+LMDB.get(txn, dbi, key, PrefixedBlob, nothing)
 walk(cur, String, PrefixedBlob) do k, blob
     handle(k, blob)
 end

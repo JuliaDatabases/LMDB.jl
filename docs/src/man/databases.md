@@ -44,12 +44,11 @@ env's finalizer cascades through any open DBI handles.
 
 ## Reads
 
-Every read takes a value-type parameter `T`. The default forms are:
+Every read takes a value-type parameter `T`. The two shapes are:
 
 ```julia
 get(txn, dbi, key, T)               # throws LMDBError(MDB_NOTFOUND) on miss
-tryget(txn, dbi, key, T)            # nothing on miss
-get(txn, dbi, key, T, default)      # default on miss
+get(txn, dbi, key, T, default)      # returns `default` on miss
 ```
 
 `T` is anything `read(::LMDB.MDBValueIO, ::Type{T})` knows how to
@@ -57,12 +56,12 @@ decode: `String`, `Vector{E}` for any bitstype `E`, or any bitstype
 scalar.
 
 ```julia
-tryget(txn, dbi, "name", String)            # → Union{String, Nothing}
-tryget(txn, dbi, key,    Vector{Float32})   # → Union{Vector{Float32}, Nothing}
-tryget(txn, dbi, key,    UInt64)            # → Union{UInt64, Nothing}
+get(txn, dbi, "name", String, nothing)              # → Union{String, Nothing}
+get(txn, dbi, key,    Vector{Float32}, nothing)     # → Union{Vector{Float32}, Nothing}
+get(txn, dbi, key,    UInt64,         zero(UInt64)) # → UInt64
 ```
 
-`tryget` is the cheap one: it inspects the raw status code and swallows
+The default-form `get` inspects the raw status code and swallows
 `MDB_NOTFOUND` without throwing.
 
 ## Writes

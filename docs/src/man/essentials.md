@@ -97,5 +97,5 @@ end                           # closes env
 
 Every LMDB-internal error surfaces as an `LMDBError`. For the usual
 "missing key" case, prefer the no-throw paths:
-[`tryget(txn, dbi, key, T)`](@ref tryget) returns `nothing` on miss,
-and `get(txn, dbi, key, T, default)` falls back to `default`.
+`get(txn, dbi, key, T, default)` falls back to `default` (use
+`nothing` for the `Union{T,Nothing}` shape).

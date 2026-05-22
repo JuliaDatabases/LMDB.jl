@@ -344,7 +344,7 @@ end
 """
     walk(f, cur::Cursor, ::Type{K}, ::Type{V}=K; from = nothing)
 
-Typed overload of `walk` mirroring the `tryget(txn, dbi, key, T)` /
+Typed overload of `walk` mirroring the `get(txn, dbi, key, T, default)` /
 `key(cur, T)` / `seek!(cur, key, T)` shape used elsewhere in the Julia wrappers.
 Decodes each key and value through `read(::MDBValueIO, K)` /
 `read(::MDBValueIO, V)` before passing them to `f(k::K, v::V)`. Same
@@ -353,7 +353,7 @@ stop contract as the raw form: `f` returning `false` halts iteration.
 Define a custom `Base.read(io::LMDB.MDBValueIO, ::Type{T})` to control
 what gets decoded (for example, a `(atime, size)` tuple from a framed
 value, or a zero-copy view). This is the iteration counterpart to
-`tryget(..., T)`.
+`get(..., T, nothing)`.
 """
 function walk(f, cur::Cursor, ::Type{K}, ::Type{V} = K;
               from = nothing) where {K, V}

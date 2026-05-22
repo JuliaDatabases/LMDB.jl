@@ -196,7 +196,7 @@ mktempdir() do dir
             Environment(dst) do env2
                 Transaction(env2) do txn
                     DBI(txn) do dbi
-                        @test LMDB.tryget(txn, dbi, "k", String) == "v"
+                        @test get(txn, dbi, "k", String, nothing) == "v"
                     end
                 end
             end
@@ -206,7 +206,7 @@ mktempdir() do dir
             Environment(dst) do env2
                 Transaction(env2) do txn
                     DBI(txn) do dbi
-                        @test LMDB.tryget(txn, dbi, "k", String) == "v"
+                        @test get(txn, dbi, "k", String, nothing) == "v"
                     end
                 end
             end

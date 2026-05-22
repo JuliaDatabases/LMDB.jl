@@ -35,7 +35,7 @@ ret == 0 || throw(LMDB.LMDBError(ret))
 return read(LMDB.MDBValueIO(val_ref[]), T)
 ```
 
-This is exactly the pattern [`tryget`](@ref) uses internally.
+This is exactly the pattern `get(txn, dbi, key, T, default)` uses internally.
 
 Bindings that don't return a status (`mdb_strerror`, `mdb_version`,
 `mdb_txn_id`, `mdb_cmp`, `mdb_dcmp`, `mdb_env_get_maxkeysize`,
@@ -105,7 +105,7 @@ function Base.read(io::IO, ::Type{AtimedBlob})
     return read(io, Vector{UInt8})
 end
 
-LMDB.tryget(txn, dbi, key, AtimedBlob)   # skip 8-byte prefix, copy tail
+LMDB.get(txn, dbi, key, AtimedBlob, nothing)   # skip 8-byte prefix, copy tail
 ```
 
 For an `isbitstype` struct `T`, the standard one-liner is enough:
@@ -115,8 +115,8 @@ Base.read(io::IO, ::Type{T}) = read!(io, Ref{T}())[]
 ```
 
 This is the analogue of heed's `BytesDecode<'txn>` trait. Every typed
-read in the Julia wrappers (`tryget`, `get`, `key`, `value`, `item`,
-typed `walk`, `pop!`, `replace!`) goes through `read(::MDBValueIO, T)`,
+read in the Julia wrappers (`get`, `key`, `value`, `item`, typed
+`walk`, `pop!`, `replace!`) goes through `read(::MDBValueIO, T)`,
 so one method definition makes a custom representation usable across
 the package. Because `MDBValueIO <: IO`, the standard `Base` IO
 primitives (`position`, `seek`, `skip`, `read(io)`, `read(io,
