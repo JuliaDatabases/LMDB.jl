@@ -1,10 +1,10 @@
 # Applied to a C-API binding that returns an LMDB status code (`Cint`).
 # Emits two functions:
 #
-#   * `<fname>(...)`           — same name, throws `LMDBError` on a non-zero
-#                                status; returns the status (always 0) otherwise.
-#   * `unchecked_<fname>(...)` — returns the raw status; the caller decides what
-#                                to do (e.g. branch on `MDB_NOTFOUND`).
+#   * `<fname>(...)`           same name, throws `LMDBError` on a non-zero
+#                              status; returns the status (always 0) otherwise.
+#   * `unchecked_<fname>(...)` returns the raw status; the caller decides what
+#                              to do (e.g. branch on `MDB_NOTFOUND`).
 #
 # Used in `liblmdb.jl` for every binding whose return type is a status. Bindings
 # that return a value (`mdb_strerror`, `mdb_txn_id`, comparators, …) or are

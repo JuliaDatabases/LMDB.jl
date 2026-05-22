@@ -7,7 +7,7 @@ CurrentModule = LMDB
 By default each key in an LMDB database has a single value. Opening a
 DB with `MDB_DUPSORT` instead allows multiple values per key, kept in
 sorted order. This is what LMDB offers for inverted indexes,
-many-to-many edges, time-series buckets, and other "key → set of
+many-to-many edges, time-series buckets, and similar "key → set of
 values" patterns.
 
 ```julia
@@ -40,21 +40,21 @@ DUPSORT wins when:
   (`seek_range!` style).
 
 It loses if you need fast aggregate reads of every value at a key. For
-that case, use `MDB_DUPFIXED` (fixed-size duplicates), which stores the
+that case, use `MDB_DUPFIXED` (fixed-size duplicates), which stores
 values contiguously and returns them in batches.
 
 ## Navigation
 
-DUPSORT layers an extra dimension on the cursor: the cursor is
+DUPSORT layers an extra dimension on the cursor. The cursor is
 positioned at a `(key, value)` pair, and you can navigate either
 across keys or across values within the current key.
 
 ```julia
-seek!(cur, "a")                    # position at (a, b) — the first dup
+seek!(cur, "a")                    # position at (a, b), the first dup
 seek_first_dup!(cur)               # value of first dup of current key
 next_dup!(cur)                     # next dup of current key  → (a, c)
 next_dup!(cur)                     #                          → (a, d)
-next_dup!(cur)                     # nothing — out of dups for "a"
+next_dup!(cur)                     # nothing, out of dups for "a"
 next_nodup!(cur)                   # skip to next key, first dup → (b, c)
 ```
 
@@ -62,7 +62,7 @@ next_nodup!(cur)                   # skip to next key, first dup → (b, c)
 |----------|---------|-----------------|------------------|
 | `next!`            | `MDB_NEXT`         | yes (next dup) | yes (next key when dups exhausted) |
 | `prev!`            | `MDB_PREV`         | yes | yes |
-| `next_dup!`        | `MDB_NEXT_DUP`     | yes | no — `nothing` past last dup |
+| `next_dup!`        | `MDB_NEXT_DUP`     | yes | no, `nothing` past last dup |
 | `prev_dup!`        | `MDB_PREV_DUP`     | yes | no |
 | `next_nodup!`      | `MDB_NEXT_NODUP`   | jump out | yes (first dup of next key) |
 | `prev_nodup!`      | `MDB_PREV_NODUP`   | jump out | yes (first dup of previous key) |
@@ -88,11 +88,11 @@ the rest of the dups intact.
   comparison.
 - `MDB_DUPSORT | MDB_DUPFIXED`: every duplicate has the same byte
   size; LMDB stores them as a packed array per key. Required for the
-  `MDB_GET_MULTIPLE` / `MDB_NEXT_MULTIPLE` cursor ops (reachable from
-  the C API).
+  `MDB_GET_MULTIPLE` / `MDB_NEXT_MULTIPLE` cursor ops, which are
+  reachable from the C API.
 - `MDB_DUPSORT | MDB_DUPFIXED | MDB_INTEGERDUP`: values are
   native-endian integers; sorted numerically.
 - `MDB_DUPSORT | MDB_REVERSEDUP`: values compared back-to-front.
 
-`MDB_RESERVE` (and therefore `put_reserved!`) is **not** valid against
-a DUPSORT database — LMDB rejects it.
+`MDB_RESERVE` (and therefore `put_reserved!`) is not valid against a
+DUPSORT database; LMDB rejects it.

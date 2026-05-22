@@ -6,9 +6,9 @@
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaDatabases.github.io/LMDB.jl/dev)
 
 Julia bindings for [LMDB](http://www.lmdb.tech/doc/), the Lightning
-Memory-Mapped Database: An embedded, memory-mapped, ACID key-value store
-developed by Symas for OpenLDAP. Small, fast, persisted to disk, and reads at
-near in-memory speeds.
+Memory-Mapped Database. LMDB is an embedded, memory-mapped, ACID key-value
+store developed by Symas for OpenLDAP. It persists to disk while reading
+at near in-memory speeds.
 
 ```julia
 using Pkg; Pkg.add("LMDB")
@@ -18,15 +18,15 @@ using Pkg; Pkg.add("LMDB")
 
 LMDB.jl exposes the same database through three surfaces:
 
-- **High-level interface**: `LMDBDict <: AbstractDict`, an
+- High-level interface: `LMDBDict <: AbstractDict`, an
   `AbstractDict{K,V}` over a single LMDB file. Standard library
   machinery (`merge!`, `filter!`, `pairs`, iteration, …) works out
   of the box. Reach for this when you want a persistent `Dict`.
-- **Julia wrappers**: `Environment`, `Transaction`, `DBI`, `Cursor`.
+- Julia wrappers: `Environment`, `Transaction`, `DBI`, `Cursor`.
   Julia-shaped wrappers around handles, transactions, and cursors,
-  with finalizers, `do`-block forms, etc. Use this when you want
-  explicit transactions.
-- **C API**: `LMDB.mdb_*` and `LMDB.MDB_*`. Raw `ccall` bindings and
+  with finalizers, `do`-block forms, and so on. Use these when you
+  want explicit transactions.
+- C API: `LMDB.mdb_*` and `LMDB.MDB_*`. Raw `ccall` bindings and
   status-code constants. Use this when the Julia wrappers don't expose
   a particular API or you want to inspect status codes directly.
 
@@ -86,8 +86,8 @@ end
 
 The package decodes `String`, `Vector{T}` for any bitstype `T`, and the
 primitive numeric types out of the box. To plug in a custom representation,
-define a `Base.read(io::IO, ::Type{T})` method; it will be picked up by `tryget`
-/ `get` / `walk(f, cur, K, V)` and the cursor accessors `key`/`value`/`item`.
+define a `Base.read(io::IO, ::Type{T})` method; it will be picked up by `tryget`,
+`get`, `walk(f, cur, K, V)`, and the cursor accessors `key`/`value`/`item`.
 Status-code matchers live on `LMDBError`:
 
 ```julia

@@ -30,7 +30,7 @@ tryget
 ```
 
 `get(txn, dbi, key, T, default)` falls back to `default` if `key` is
-missing — same shape as `Base.get(dict, key, default)`.
+missing, matching `Base.get(dict, key, default)`.
 
 ## Writes
 

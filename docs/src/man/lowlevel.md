@@ -11,7 +11,7 @@ integrate with a custom data layout, branch on a status code that the
 Julia wrappers don't surface, or skip allocations on a hot path.
 
 For the full inventory, see [the API reference](@ref API-LowLevel). What
-follows is a tour of how the surface is shaped.
+follows is an overview of how the surface is shaped.
 
 ## The auto-throwing convention
 
@@ -25,7 +25,7 @@ LMDB.unchecked_mdb_env_open(env, path, flags, mode)  # returns the raw Cint
 
 Use the bare name when any error should propagate (the common case).
 Use the `unchecked_*` companion when you need to inspect the raw status
-yourself — e.g. distinguishing `MDB_NOTFOUND` from a real error:
+yourself, for example to distinguish `MDB_NOTFOUND` from a real error:
 
 ```julia
 val_ref = Ref(LMDB.MDB_val(zero(Csize_t), C_NULL))
@@ -41,7 +41,7 @@ Bindings that don't return a status (`mdb_strerror`, `mdb_version`,
 `mdb_txn_id`, `mdb_cmp`, `mdb_dcmp`, `mdb_env_get_maxkeysize`,
 `mdb_cursor_txn`, `mdb_cursor_dbi`) and `Cvoid`-returning ones
 (`mdb_env_close`, `mdb_dbi_close`, `mdb_txn_abort`, `mdb_txn_reset`,
-`mdb_cursor_close`) are left bare — there is nothing to check.
+`mdb_cursor_close`) are left bare; there is nothing to check.
 
 ## ccall glue: passing values to `Ptr{MDB_val}`
 
@@ -52,7 +52,7 @@ ccall to fill in. LMDB.jl ships `Base.cconvert` overloads on
 type), `Base.RefValue` over a bitstype, any bitstype scalar, and a
 pre-built `Ref{MDB_val}` (used as an out-param). Each routes through a
 self-rooted argument that `ccall`'s automatic `GC.@preserve` keeps
-alive across the call, so callers don't have to write `Ref(...)` or
+alive across the call, so callers do not have to write `Ref(...)` or
 `GC.@preserve` for input arguments themselves.
 
 ```julia
@@ -91,7 +91,7 @@ The package ships these defaults:
 |-----|-----------|
 | `String` | one `unsafe_string` over the remaining bytes |
 | `Vector{E}` for bitstype `E` | one alloc + `unsafe_copyto!`; the buffer is Julia-owned |
-| any bitstype scalar `T` | one `unsafe_load` of `sizeof(T)` bytes — zero allocations |
+| any bitstype scalar `T` | one `unsafe_load` of `sizeof(T)` bytes (zero allocations) |
 
 Add custom representations by overloading `Base.read` on the abstract
 `IO`. This is the idiomatic Julia form and keeps the decoder portable
@@ -121,8 +121,7 @@ so one method definition makes a custom representation usable across
 the package. Because `MDBValueIO <: IO`, the standard `Base` IO
 primitives (`position`, `seek`, `skip`, `read(io)`, `read(io,
 n::Integer)`, `read!(io, A)`, `bytesavailable`, `eof`) work out of the
-box, so structured framed-value decoders read exactly like any other
-Julia parser.
+box. Structured framed-value decoders read like any other Julia parser.
 
 ## Memory ownership rules
 
@@ -141,11 +140,11 @@ Julia parser.
 A few LMDB features are reachable only through the C API because the
 Julia wrappers deliberately don't include them:
 
-- **Custom comparators.** `LMDB.mdb_set_compare` /
+- Custom comparators: `LMDB.mdb_set_compare` and
   `LMDB.mdb_set_dupsort` accept a `MDB_cmp_func` callback. Use
   `@cfunction` to lift a Julia function into the right C signature.
-- **`mdb_set_relfunc` / `mdb_set_relctx`.** Used by
+- `mdb_set_relfunc` / `mdb_set_relctx`: used by
   `MDB_FIXEDMAP`-style relocations; rarely needed.
-- **`MDB_GET_MULTIPLE` / `MDB_NEXT_MULTIPLE` cursor ops.** Reachable by
+- `MDB_GET_MULTIPLE` / `MDB_NEXT_MULTIPLE` cursor ops: reachable by
   passing the constant directly to `LMDB.mdb_cursor_get`. Useful with
   `MDB_DUPFIXED` databases for batched reads.

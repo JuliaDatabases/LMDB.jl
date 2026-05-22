@@ -3,11 +3,11 @@
 
 A persistent `AbstractDict{K,V}` backed by a single LMDB environment
 plus its default DBI. Keys and values are encoded as raw bytes;
-`String`, `Vector{T}` (where `T` is bitstype), or any bitstype scalar
+`String`, `Vector{T}` (where `T` is bitstype), and any bitstype scalar
 all work.
 
 For prefix-scoped scans (e.g. hierarchical "directory" key schemes),
-see `LMDB.scan` / `LMDB.scan_keys` / `LMDB.scan_values` / `LMDB.list_dirs`.
+see `LMDB.scan`, `LMDB.scan_keys`, `LMDB.scan_values`, and `LMDB.list_dirs`.
 """
 mutable struct LMDBDict{K,V} <: AbstractDict{K,V}
     env::LMDB.Environment
@@ -205,7 +205,7 @@ function Base.pop!(d::LMDBDict{K,V}, k, default) where {K,V}
     end
 end
 
-# `pop!(d)` without a key — pops the first entry, mirroring `Base.pop!(::Dict)`.
+# `pop!(d)` without a key: pops the first entry, mirroring `Base.pop!(::Dict)`.
 function Base.pop!(d::LMDBDict{K,V}) where {K,V}
     txn_dbi_do(d) do txn, dbi
         LMDB.open(txn, dbi) do cur

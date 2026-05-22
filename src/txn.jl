@@ -4,8 +4,8 @@ Transactions may be read-only or read-write.
 
 A `Transaction` keeps a reference to its parent `Environment`, both to
 expose it via `env(txn)` and to ensure the env outlives the txn under
-GC. If a transaction is dropped without an explicit `commit` or `abort`,
-its finalizer aborts it.
+GC. A transaction dropped without an explicit `commit` or `abort` is
+aborted by its finalizer.
 """
 mutable struct Transaction
     handle::Ptr{MDB_txn}
@@ -53,8 +53,8 @@ end
 
 """Abandon all the operations of the transaction instead of saving them.
 
-The transaction and its cursors must not be used after, because its handle is freed.
-Idempotent: safe to call after a previous `commit`/`abort` or on a never-opened txn.
+The transaction and its cursors must not be used afterward, because the handle is freed.
+Idempotent: safe to call after a previous `commit` or `abort`, or on a never-opened txn.
 """
 function abort(txn::Transaction)
     txn.handle == C_NULL && return
@@ -68,7 +68,7 @@ end
 
 """Commit all the operations of a transaction into the database.
 
-The transaction and its cursors must not be used after, because its handle is freed.
+The transaction and its cursors must not be used afterward, because the handle is freed.
 Idempotent.
 """
 function commit(txn::Transaction)

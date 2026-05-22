@@ -5,7 +5,7 @@ CurrentModule = LMDB
 ```
 
 A `Cursor` is a positioned iterator over the entries in a `DBI`. Cursors
-are bound to a transaction; closing the txn invalidates the cursor.
+are bound to a transaction. Closing the txn invalidates the cursor.
 
 ## Construction
 

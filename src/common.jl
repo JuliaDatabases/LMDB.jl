@@ -1,4 +1,4 @@
-# Zero-valued `MDB_val` sentinels — used as out-parameters and for the
+# Zero-valued `MDB_val` sentinels, used as out-parameters and for the
 # "no value" form of `delete!`. Constructing a non-empty `MDB_val` from a
 # Julia value requires taking a raw pointer into that value, which is only
 # safe when the value is GC-preserved across the eventual ccall. We keep
@@ -11,7 +11,7 @@ MDBValue(::Nothing) = MDBValue()
 # uninitialized `Ref{MDB_val}`; `data` is the Julia-owned buffer whose
 # pointer the C call needs to see. `cconvert` returns an `MDBArg`, ccall
 # preserves it across the call, and `unsafe_convert` (below) is the one
-# place pointer extraction happens — that means `data` is provably alive
+# place pointer extraction happens, so `data` is provably alive
 # at the moment its pointer is taken.
 struct MDBArg{D}
     box::Base.RefValue{MDB_val}
@@ -19,7 +19,7 @@ struct MDBArg{D}
     MDBArg(data::D) where {D} = new{D}(Ref{MDB_val}(), data)
 end
 
-# Lazy pointer extraction. Runs while ccall is preserving `m`; therefore
+# Lazy pointer extraction. Runs while ccall is preserving `m`, so
 # `m.data` is alive at the point we ask it for a pointer, satisfying the
 # Julia GC contract for `Base.unsafe_convert`.
 @inline function Base.unsafe_convert(::Type{Ptr{MDB_val}}, m::MDBArg{String})
@@ -43,11 +43,11 @@ Base.cconvert(::Type{Ptr{MDB_val}}, x::MDB_val) = Ref(x)
 # Pre-built `Ref{MDB_val}` (iterator state, `get` out-param): passthrough;
 # ccall reads/writes the box directly.
 Base.cconvert(::Type{Ptr{MDB_val}}, x::Base.RefValue{MDB_val}) = x
-# User input — package the data, defer pointer extraction.
+# User input: package the data, defer pointer extraction.
 Base.cconvert(::Type{Ptr{MDB_val}}, x::String)        = MDBArg(x)
 Base.cconvert(::Type{Ptr{MDB_val}}, x::Array)         = MDBArg(x)
-# Other AbstractArrays that support `unsafe_convert(Ptr{T}, x)` flow through —
-# contiguous `SubArray`, `ReinterpretArray`, etc. Non-contiguous inputs
+# Other AbstractArrays that support `unsafe_convert(Ptr{T}, x)` flow through:
+# contiguous `SubArray`, `ReinterpretArray`, and so on. Non-contiguous inputs
 # surface the standard "cannot take pointer" error from `unsafe_convert`.
 # The `Array` method above stays as a more-specific overload to break the
 # ambiguity with `Base.cconvert(::Type{<:Ptr}, ::Array)`.
@@ -68,13 +68,13 @@ A read-only `IO` view over an LMDB-owned `MDB_val`. Wraps the
 package's typed-read path is the standard `Base.read(io, T)`.
 
 Any `T` for which `Base.read(io::IO, ::Type{T})` is defined can be
-passed to `tryget` / `get` / `key` / `value` / `item` / typed `walk` /
-`pop!` / `replace!`. Out of the box this covers everything Base ships:
-the primitive numeric types (`Int8`/…/`Int128`, `Float16`/…/`Float64`,
-`Bool`, `Char`, `Ptr{T}`) plus `String`, all zero-allocation thanks to
-the `@inline` `unsafe_read` override below. The package adds two more
-overloads, `Vector{E}` for any bitstype `E` and `UInt8`, that consume
-the remaining buffer in a single copy.
+passed to `tryget`, `get`, `key`, `value`, `item`, typed `walk`,
+`pop!`, and `replace!`. Out of the box this covers everything Base
+ships: the primitive numeric types (`Int8`/…/`Int128`, `Float16`/…/
+`Float64`, `Bool`, `Char`, `Ptr{T}`) plus `String`, all zero-allocation
+thanks to the `@inline` `unsafe_read` override below. The package adds
+two more overloads, `Vector{E}` for any bitstype `E` and `UInt8`, that
+consume the remaining buffer in a single copy.
 
 To plug in a custom representation (including bitstype structs that
 Base's primitive reads don't cover), define a single `Base.read`
@@ -97,10 +97,10 @@ pattern:
     Base.read(io::IO, ::Type{T}) = read!(io, Ref{T}())[]
 
 This is the analogue of heed's `BytesDecode<'txn>` trait, expressed
-through Julia's existing IO interface rather than a bespoke function.
+through Julia's existing IO interface instead of a bespoke function.
 
 The underlying buffer points into LMDB's mmap and is only valid for
-the producing transaction's lifetime; copy out anything you want to
+the producing transaction's lifetime. Copy out anything you want to
 retain past commit/abort. The default `String` and `Vector{E}` reads
 both copy.
 """
@@ -165,15 +165,15 @@ end
 
 # Note: we deliberately don't define a `Base.read(io::MDBValueIO, ::Type{T})
 # where T` catch-all for `isbitstype(T)`. Such a generic conflicts with
-# users defining the idiomatic `Base.read(io::IO, ::Type{MyT})` — Julia
+# users defining the idiomatic `Base.read(io::IO, ::Type{MyT})`: Julia
 # treats `(MDBValueIO, Type{T} where T)` and `(IO, Type{MyT})` as
 # unordered (one is more specific in arg1, the other in arg2), so the
 # call ambiguates. Instead, we rely on Base's existing
 # `read(::IO, T::Union{Int8,…,Float64,Bool,Char,Ptr})` specialisations
-# for the well-known primitives; our `@inline unsafe_read` above lets
+# for the well-known primitives. Our `@inline unsafe_read` above lets
 # the optimiser elide the `Ref{T}` Base allocates internally, so they
-# stay zero-allocation. User-defined types — including `isbitstype`
-# structs — just need a one-line `Base.read(io::IO, ::Type{MyT})` method
+# stay zero-allocation. User-defined types, including `isbitstype`
+# structs, just need a one-line `Base.read(io::IO, ::Type{MyT})` method
 # defined wherever the user owns the type.
 
 # Whole-blob defaults: read everything from the current position to the end.

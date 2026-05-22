@@ -42,7 +42,7 @@ end
 function close(cur::Cursor)
     cur.handle == C_NULL && return
     # Per `lmdb.h`, write-txn cursors are freed by the parent txn's
-    # commit/abort and `mdb_cursor_close` afterwards is undefined; for
+    # commit/abort, and `mdb_cursor_close` afterwards is undefined. For
     # read-txn cursors, the txn handle is required to still be valid.
     # If the parent txn is already finalised in the wrapper, drop the
     # handle without calling into LMDB.
@@ -357,10 +357,10 @@ end
     delete!(cur::Cursor; flags=0)
 
 Delete the entry the cursor is currently positioned at. Throws
-`LMDBError` if the cursor is not on a live entry (LMDB returns `EINVAL`,
-not `MDB_NOTFOUND`, so the Bool/idempotent shape used by
-`delete!(txn, dbi, key)` doesn't apply here; position the cursor first
-with `seek!`/`next!` if you need to recover from a missing entry).
+`LMDBError` if the cursor is not on a live entry. LMDB returns `EINVAL`
+rather than `MDB_NOTFOUND`, so the Bool/idempotent shape used by
+`delete!(txn, dbi, key)` doesn't apply here. Position the cursor first
+with `seek!` or `next!` if you need to recover from a missing entry.
 
 After a successful delete, LMDB advances the cursor to the next entry.
 """

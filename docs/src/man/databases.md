@@ -24,7 +24,7 @@ open(txn, "users") do dbi
 end
 ```
 
-In practice you'll rarely *want* to close a DBI handle explicitly: the
+In practice you'll rarely *want* to close a DBI handle explicitly. The
 env owns it, and `mdb_dbi_close` is documented as rarely useful. The
 env's finalizer cascades through any open DBI handles.
 
@@ -53,8 +53,8 @@ get(txn, dbi, key, T, default)      # default on miss
 ```
 
 `T` is anything `read(::LMDB.MDBValueIO, ::Type{T})` knows how to
-decode — `String`, `Vector{E}` for any bitstype `E`, or any bitstype
-scalar:
+decode: `String`, `Vector{E}` for any bitstype `E`, or any bitstype
+scalar.
 
 ```julia
 tryget(txn, dbi, "name", String)            # → Union{String, Nothing}
@@ -82,7 +82,7 @@ Useful write flags:
 |------|---------|
 | `MDB_NOOVERWRITE` | fail with `MDB_KEYEXIST` if `key` is already present |
 | `MDB_NODUPDATA` | (DUPSORT) fail if the `(key, val)` pair already exists |
-| `MDB_APPEND` | append; only valid if the new key sorts after every existing key — *much* faster for sorted bulk loads |
+| `MDB_APPEND` | append; only valid if the new key sorts after every existing key. Much faster for sorted bulk loads |
 
 ```julia
 # Bulk import in sorted order:
@@ -98,7 +98,7 @@ end
 `replace!` and `pop!` do the read-modify pair inside the same
 transaction, so there is no time-of-check / time-of-use gap.
 
-## `put_reserved!` — write directly into the mmap
+## `put_reserved!`: write directly into the mmap
 
 When the value is large or assembled from multiple sources, you can
 skip the intermediate `Vector{UInt8}` round-trip and write straight
@@ -115,8 +115,8 @@ end
 inside the callback, and only inside the surrounding write txn; don't
 escape it.
 
-`put_reserved!` is the equivalent of heed's `Database::put_reserved`,
-and is incompatible with DUPSORT.
+`put_reserved!` is the equivalent of heed's `Database::put_reserved`.
+It is incompatible with DUPSORT.
 
 ## Stats
 
@@ -137,4 +137,4 @@ drop(txn, dbi; delete = true)  # delete the DB and close the handle
 
 For named sub-DBs, `delete = true` removes the entry from the env's
 main DB. For the main DB itself, `delete = true` is treated as
-`delete = false` (LMDB cannot delete its own root).
+`delete = false`, since LMDB cannot delete its own root.
