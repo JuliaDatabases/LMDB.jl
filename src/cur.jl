@@ -115,7 +115,7 @@ if the database is empty. Wraps `MDB_FIRST`.
 function seek!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_FIRST, nothing) || return nothing
-    return mdb_unpack(T, key_ref)
+    return Base.read(MDBValueIO(key_ref[]), T)
 end
 
 """
@@ -127,7 +127,7 @@ matched key as `T`, or `nothing` if no such entry exists. Wraps `MDB_SET_KEY`.
 function seek!(cur::Cursor, searchkey, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_SET_KEY, searchkey) || return nothing
-    return mdb_unpack(T, key_ref)
+    return Base.read(MDBValueIO(key_ref[]), T)
 end
 
 """
@@ -139,7 +139,7 @@ if the database is empty. Wraps `MDB_LAST`.
 function seek_last!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_LAST, nothing) || return nothing
-    return mdb_unpack(T, key_ref)
+    return Base.read(MDBValueIO(key_ref[]), T)
 end
 
 """
@@ -151,7 +151,7 @@ Position the cursor at the smallest key `>= key`. Returns the matched key as
 function seek_range!(cur::Cursor, searchkey, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_SET_RANGE, searchkey) || return nothing
-    return mdb_unpack(T, key_ref)
+    return Base.read(MDBValueIO(key_ref[]), T)
 end
 
 """
@@ -163,7 +163,7 @@ the cursor moved past the last entry. Wraps `MDB_NEXT`.
 function next!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_NEXT, nothing) || return nothing
-    return mdb_unpack(T, key_ref)
+    return Base.read(MDBValueIO(key_ref[]), T)
 end
 
 """
@@ -175,7 +175,7 @@ if the cursor moved past the first entry. Wraps `MDB_PREV`.
 function prev!(cur::Cursor, ::Type{T}=Vector{UInt8}) where T
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_PREV, nothing) || return nothing
-    return mdb_unpack(T, key_ref)
+    return Base.read(MDBValueIO(key_ref[]), T)
 end
 
 """
@@ -187,7 +187,7 @@ Return the key at the cursor's current position, decoded as `K`. Wraps
 function key(cur::Cursor, ::Type{K}=Vector{UInt8}) where K
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     mdb_cursor_get(cur, key_ref, val_ref, MDB_GET_CURRENT)
-    return mdb_unpack(K, key_ref)
+    return Base.read(MDBValueIO(key_ref[]), K)
 end
 
 """
@@ -199,7 +199,7 @@ Return the value at the cursor's current position, decoded as `V`. Wraps
 function value(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     mdb_cursor_get(cur, key_ref, val_ref, MDB_GET_CURRENT)
-    return mdb_unpack(V, val_ref)
+    return Base.read(MDBValueIO(val_ref[]), V)
 end
 
 """
@@ -211,7 +211,7 @@ Return the (key => value) pair at the cursor's current position. Wraps
 function item(cur::Cursor, ::Type{K}=Vector{UInt8}, ::Type{V}=Vector{UInt8}) where {K,V}
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     mdb_cursor_get(cur, key_ref, val_ref, MDB_GET_CURRENT)
-    return mdb_unpack(K, key_ref) => mdb_unpack(V, val_ref)
+    return Base.read(MDBValueIO(key_ref[]), K) => Base.read(MDBValueIO(val_ref[]), V)
 end
 
 """
@@ -224,7 +224,7 @@ value as `V`, or `nothing` if the current entry has no duplicates. Wraps
 function seek_first_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_FIRST_DUP, nothing) || return nothing
-    return mdb_unpack(V, val_ref)
+    return Base.read(MDBValueIO(val_ref[]), V)
 end
 
 """
@@ -237,7 +237,7 @@ value as `V`, or `nothing` if the current entry has no duplicates. Wraps
 function seek_last_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_LAST_DUP, nothing) || return nothing
-    return mdb_unpack(V, val_ref)
+    return Base.read(MDBValueIO(val_ref[]), V)
 end
 
 """
@@ -250,7 +250,7 @@ as `V`, or `nothing` if there are no more duplicates of this key. Wraps
 function next_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_NEXT_DUP, nothing) || return nothing
-    return mdb_unpack(V, val_ref)
+    return Base.read(MDBValueIO(val_ref[]), V)
 end
 
 """
@@ -263,7 +263,7 @@ as `V`, or `nothing` if there are no earlier duplicates. Wraps
 function prev_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_PREV_DUP, nothing) || return nothing
-    return mdb_unpack(V, val_ref)
+    return Base.read(MDBValueIO(val_ref[]), V)
 end
 
 """
@@ -276,7 +276,7 @@ key. Wraps `MDB_NEXT_NODUP`.
 function next_nodup!(cur::Cursor, ::Type{K}=Vector{UInt8}) where K
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_NEXT_NODUP, nothing) || return nothing
-    return mdb_unpack(K, key_ref)
+    return Base.read(MDBValueIO(key_ref[]), K)
 end
 
 """
@@ -288,7 +288,7 @@ Move to the last entry of the previous key. Returns the new key as `K`, or
 function prev_nodup!(cur::Cursor, ::Type{K}=Vector{UInt8}) where K
     key_ref = Ref(MDBValue()); val_ref = Ref(MDBValue())
     _cursor_seek!(cur, key_ref, val_ref, MDB_PREV_NODUP, nothing) || return nothing
-    return mdb_unpack(K, key_ref)
+    return Base.read(MDBValueIO(key_ref[]), K)
 end
 
 """
@@ -329,19 +329,19 @@ end
 
 Typed overload of `walk` mirroring the `tryget(txn, dbi, key, T)` /
 `key(cur, T)` / `seek!(cur, key, T)` shape used elsewhere in tier-2.
-Decodes each key and value through `mdb_unpack(K, …)` /
-`mdb_unpack(V, …)` before passing them to `f(k::K, v::V)`. Same stop
-contract as the raw form: `f` returning `false` halts iteration.
+Decodes each key and value through `read(::MDBValueIO, K)` /
+`read(::MDBValueIO, V)` before passing them to `f(k::K, v::V)`. Same
+stop contract as the raw form: `f` returning `false` halts iteration.
 
-Define a custom `mdb_unpack(::Type{T}, ::Ref{MDB_val})` method on a
-marker type to control what gets decoded — e.g. a `(atime, size)`
-tuple from a framed value, or a zero-copy view. This is the iteration
-counterpart to `tryget(..., T)`.
+Define a custom `Base.read(io::LMDB.MDBValueIO, ::Type{T})` to control
+what gets decoded — e.g. a `(atime, size)` tuple from a framed value,
+or a zero-copy view. This is the iteration counterpart to
+`tryget(..., T)`.
 """
 function walk(f, cur::Cursor, ::Type{K}, ::Type{V} = K;
               from = nothing) where {K, V}
     walk(cur; from) do k_ref, v_ref
-        f(mdb_unpack(K, k_ref), mdb_unpack(V, v_ref))
+        f(Base.read(MDBValueIO(k_ref[]), K), Base.read(MDBValueIO(v_ref[]), V))
     end
 end
 

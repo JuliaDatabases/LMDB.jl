@@ -24,7 +24,7 @@ module LMDB_CUR
             @test 0 == put!(cur, key, val*string(key))
             ks = typeof(key)[]
             LMDB.walk(cur) do k_ref, _
-                push!(ks, LMDB.mdb_unpack(typeof(key), k_ref))
+                push!(ks, read(LMDB.MDBValueIO(k_ref[]), typeof(key)))
             end
             @test issetequal(ks, [11, 10])
         finally
@@ -86,26 +86,26 @@ module LMDB_CUR
                         # walk over everything
                         ks = String[]
                         LMDB.walk(cur) do k_ref, _
-                            push!(ks, LMDB.mdb_unpack(String, k_ref))
+                            push!(ks, read(LMDB.MDBValueIO(k_ref[]), String))
                         end
                         @test ks == ["a", "b", "c"]
 
                         # walk from a starting key
                         ks2 = String[]
                         LMDB.walk(cur; from="b") do k_ref, _
-                            push!(ks2, LMDB.mdb_unpack(String, k_ref))
+                            push!(ks2, read(LMDB.MDBValueIO(k_ref[]), String))
                         end
                         @test ks2 == ["b", "c"]
 
                         # walk from a key past the last entry — no callbacks.
                         ks3 = String[]
                         LMDB.walk(cur; from="z") do k_ref, _
-                            push!(ks3, LMDB.mdb_unpack(String, k_ref))
+                            push!(ks3, read(LMDB.MDBValueIO(k_ref[]), String))
                         end
                         @test isempty(ks3)
 
-                        # typed walk: each ref decoded via mdb_unpack(K, ...)
-                        # / mdb_unpack(V, ...).
+                        # typed walk: each ref decoded via read(MDBValueIO, K)
+                        # / read(MDBValueIO, V).
                         kv = Pair{String, String}[]
                         LMDB.walk(cur, String, String) do k, v
                             push!(kv, k => v)
@@ -138,7 +138,7 @@ module LMDB_CUR
 
                         ks = String[]
                         LMDB.walk(cur) do k_ref, _
-                            push!(ks, LMDB.mdb_unpack(String, k_ref))
+                            push!(ks, read(LMDB.MDBValueIO(k_ref[]), String))
                         end
                         @test isempty(ks)
                     end

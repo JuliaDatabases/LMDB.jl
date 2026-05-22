@@ -113,7 +113,8 @@ function _iter_step(::LMDBDict{K,V}, txn::Transaction, cur::Cursor,
         LMDB.abort(txn)
         throw(LMDBError(ret))
     end
-    return (LMDB.mdb_unpack(K, k_ref) => LMDB.mdb_unpack(V, v_ref), (txn, cur))
+    return (Base.read(LMDB.MDBValueIO(k_ref[]), K) =>
+            Base.read(LMDB.MDBValueIO(v_ref[]), V), (txn, cur))
 end
 
 Base.IteratorSize(::Type{<:LMDBDict}) = Base.HasLength()
@@ -282,7 +283,8 @@ function scan(d::LMDBDict{K,V}; prefix = UInt8[]) where {K,V}
     out = Pair{K,V}[]
     cursor_do(d, readonly = true) do cur
         _walk_prefix(cur, bprefix) do k_ref, v_ref
-            push!(out, mdb_unpack(K, k_ref) => mdb_unpack(V, v_ref))
+            push!(out, Base.read(MDBValueIO(k_ref[]), K) =>
+                       Base.read(MDBValueIO(v_ref[]), V))
         end
     end
     return out
@@ -298,7 +300,7 @@ function scan_keys(d::LMDBDict{K}; prefix = UInt8[]) where K
     out = K[]
     cursor_do(d, readonly = true) do cur
         _walk_prefix(cur, bprefix) do k_ref, _
-            push!(out, mdb_unpack(K, k_ref))
+            push!(out, Base.read(MDBValueIO(k_ref[]), K))
         end
     end
     return out
@@ -314,7 +316,7 @@ function scan_values(d::LMDBDict{K,V}; prefix = UInt8[]) where {K,V}
     out = V[]
     cursor_do(d, readonly = true) do cur
         _walk_prefix(cur, bprefix) do _, v_ref
-            push!(out, mdb_unpack(V, v_ref))
+            push!(out, Base.read(MDBValueIO(v_ref[]), V))
         end
     end
     return out

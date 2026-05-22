@@ -3,22 +3,18 @@ module LMDB_Integration
     using Test
 
     # cuTile-shaped framed value: 8-byte LE atime prefix, then the payload.
-    # Defined here at module scope to demonstrate the `mdb_unpack` extension
-    # contract and to regression-guard it (a downstream package — cuTile's
-    # DiskCache — relies on being able to plug in its own unpack method
-    # without touching LMDB.jl internals).
+    # Defined here at module scope to demonstrate the `Base.read(::IO, …)`
+    # extension contract and to regression-guard it (a downstream package
+    # — cuTile's DiskCache — relies on being able to plug in its own
+    # decoder against the abstract `IO`, without depending on
+    # `LMDB.MDBValueIO` in its own type signatures).
     struct AtimedBlob end
     const _ATIME_PREFIX = 8
 
-    function LMDB.mdb_unpack(::Type{AtimedBlob}, ref::Ref{LMDB.MDB_val})
-        v = ref[]
-        sz = Int(v.mv_size)
-        sz < _ATIME_PREFIX && return UInt8[]
-        out = Vector{UInt8}(undef, sz - _ATIME_PREFIX)
-        unsafe_copyto!(pointer(out),
-                       Ptr{UInt8}(v.mv_data) + _ATIME_PREFIX,
-                       sz - _ATIME_PREFIX)
-        return out
+    function Base.read(io::IO, ::Type{AtimedBlob})
+        bytesavailable(io) < _ATIME_PREFIX && return UInt8[]
+        skip(io, _ATIME_PREFIX)
+        return read(io, Vector{UInt8})
     end
 
     pack_atimed(atime::UInt64, payload::Vector{UInt8}) = begin
@@ -91,9 +87,9 @@ module LMDB_Integration
                 @test LMDB.tryget(txn, dbi, "key3", String) === nothing
             end
 
-            # mdb_unpack extension: write an 8-byte-prefixed framed value
+            # MDBValueIO extension: write an 8-byte-prefixed framed value
             # and read it back via `tryget(..., AtimedBlob)`, getting the
-            # payload tail in a single copy with no slicing.
+            # payload tail with one alloc + skip + copy, no slicing.
             payload = Vector{UInt8}("cubin-bytes-here")
             atime = UInt64(0xdeadbeefcafebabe)
             start(env) do txn

@@ -104,9 +104,11 @@ key was not present. Other LMDB errors propagate as `LMDBError`.
 
 The Bool-return / no-throw-on-miss shape matches `Base.delete!`'s "if
 any" contract and the dominant LMDB-binding convention (heed, py-lmdb,
-lmdb-js, lmdbxx)."""
-function delete!(txn::Transaction, dbi::DBI, key, val=C_NULL)
-    val_arg = val === C_NULL ? MDBValue() : val
+lmdb-js, lmdbxx).
+"""
+delete!(txn::Transaction, dbi::DBI, key) = _delete!(txn, dbi, key, MDBValue())
+delete!(txn::Transaction, dbi::DBI, key, val) = _delete!(txn, dbi, key, val)
+function _delete!(txn::Transaction, dbi::DBI, key, val_arg)
     ret = unchecked_mdb_del(txn, dbi, key, val_arg)
     ret == MDB_NOTFOUND && return false
     iszero(ret) || throw(LMDBError(ret))
@@ -136,20 +138,20 @@ function stat(txn::Transaction, dbi::DBI)
 end
 
 """Get an item from a database. Throws `LMDBError` if `key` is not present."""
-function get(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
+@inline function get(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
     val_ref = Ref(MDBValue())
     mdb_get(txn, dbi, key, val_ref)
-    return mdb_unpack(T, val_ref)
+    return Base.read(MDBValueIO(val_ref[]), T)
 end
 
 """Get an item from a database, returning `nothing` if `key` is not present.
 Use this in preference to `get` + try/catch when a missing key is expected."""
-function tryget(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
+@inline function tryget(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
     val_ref = Ref(MDBValue())
     ret = unchecked_mdb_get(txn, dbi, key, val_ref)
     ret == MDB_NOTFOUND && return nothing
     iszero(ret) || throw(LMDBError(ret))
-    return mdb_unpack(T, val_ref)
+    return Base.read(MDBValueIO(val_ref[]), T)
 end
 
 """Get an item from a database, returning `default` if `key` is not present.
