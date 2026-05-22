@@ -5,8 +5,8 @@ CurrentModule = LMDB
 ```
 
 Every LMDB operation runs inside a transaction. Transactions are either
-**read-only** (any number can run concurrently) or **read-write** (one
-at a time per environment).
+read-only (any number can run concurrently) or read-write (one at a
+time per environment).
 
 ## Starting a transaction
 
@@ -57,13 +57,13 @@ for batch in batches
         end
     end
     reset(txn)        # release the reader slot but keep the handle
-    renew(txn)        # acquire a fresh slot — sees newly-committed writes
+    renew(txn)        # acquire a fresh slot; sees newly-committed writes
 end
 abort(txn)
 ```
 
 `reset` is only valid on read-only txns. `renew` fetches a fresh
-database snapshot; without it, the parked txn won't see writes that
+database snapshot. Without it, the parked txn won't see writes that
 landed in the meantime.
 
 ## Sub-transactions
@@ -95,12 +95,12 @@ write txn.
 ## Reader slots
 
 Each open read txn occupies one reader slot. The default `maxreaders`
-is small (126); raise it via `Environment(...; maxreaders = N)` for
+is small (126). Raise it via `Environment(...; maxreaders = N)` for
 high-concurrency read workloads, or call [`reader_check(env)`](@ref) to
 reap slots left behind by crashed processes.
 
 Aggressive `for … break` over an `LMDBDict` without GC pressure can
-pile up read txns. If that's a concern, use
+pile up read txns. If that becomes a problem, use
 [`walk(f, cur)`](@ref API-Cur-walk) inside an explicit
 `open(txn) do …` block instead.
 
@@ -109,13 +109,13 @@ pile up read txns. If that's a concern, use
 The most common patterns:
 
 ```julia
-# Hot read path — many small lookups, no writes
+# Hot read path: many small lookups, no writes
 start(env; flags = MDB_RDONLY) do txn ... end
 
-# Bulk import — single transaction across many writes (atomic, fast)
+# Bulk import: single transaction across many writes (atomic, fast)
 start(env) do txn ... end
 
-# Long-running reader (e.g. background scrubber) — reset + renew loop
+# Long-running reader (e.g. background scrubber): reset + renew loop
 txn = start(env; flags = MDB_RDONLY)
 while running
     ...

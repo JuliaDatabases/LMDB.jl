@@ -77,13 +77,13 @@ value's bytes can be produced straight into a destination buffer (for
 example, an `unsafe_store!` of a header followed by `copyto!` of a
 payload). Equivalent to heed's `Database::put_reserved`.
 
-`buf` is an `unsafe_wrap` over the LMDB-allocated page; it is *only
+`buf` is an `unsafe_wrap` over the LMDB-allocated page. It is *only
 valid inside `f`* (and only inside the enclosing write txn). The
 buffer's length is exactly `size`. Don't escape `buf` past `f`'s
 return; copy what you want to keep.
 
-Cannot be combined with `MDB_DUPSORT`/`MDB_DUPFIXED` databases (LMDB
-forbids `MDB_RESERVE` there).
+Cannot be combined with `MDB_DUPSORT` or `MDB_DUPFIXED` databases,
+since LMDB forbids `MDB_RESERVE` there.
 """
 function put_reserved!(f, txn::Transaction, dbi::DBI, key, size::Integer;
                        flags::Integer = zero(Cuint))
@@ -102,7 +102,7 @@ Delete `key` (or, in `MDB_DUPSORT`, the specific `(key, val)` pair) from
 the database. Returns `true` if an entry was removed, `false` if the
 key was not present. Other LMDB errors propagate as `LMDBError`.
 
-The Bool-return / no-throw-on-miss shape matches `Base.delete!`'s "if
+The Bool-return, no-throw-on-miss shape matches `Base.delete!`'s "if
 any" contract and the LMDB-binding convention shared by heed, py-lmdb,
 lmdb-js, and lmdbxx.
 """

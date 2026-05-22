@@ -19,7 +19,7 @@ for callers that need to inspect the raw status code.
 
 Every status-returning binding in `liblmdb.jl` is paired with an
 `unchecked_*` companion at definition time. Use the bare name when any
-error should propagate (the common case); use `unchecked_*` when you
+error should propagate (the common case). Use `unchecked_*` when you
 need to inspect the raw `Cint` yourself, for example to distinguish
 `MDB_NOTFOUND` from a real error:
 
@@ -34,15 +34,15 @@ Bindings that return non-status data (`mdb_strerror`, `mdb_version`,
 `mdb_txn_id`, `mdb_cmp`, `mdb_dcmp`, `mdb_env_get_maxkeysize`,
 `mdb_env_get_userctx`, `mdb_cursor_txn`, `mdb_cursor_dbi`) and
 `Cvoid`-returning ones (`mdb_env_close`, `mdb_dbi_close`,
-`mdb_txn_abort`, `mdb_txn_reset`, `mdb_cursor_close`) are left bare;
-there is nothing to check.
+`mdb_txn_abort`, `mdb_txn_reset`, `mdb_cursor_close`) are left bare,
+since there is nothing to check.
 
 ## Customisation point: `MDBValueIO`
 
-`tryget` / `get` / `key` / `value` / `item` / typed `walk` / `pop!` /
+`tryget`, `get`, `key`, `value`, `item`, typed `walk`, `pop!`, and
 `replace!` all go through `read(::MDBValueIO, T)` to decode an
 `MDB_val` into a Julia value. Define a `Base.read` method on
-`MDBValueIO` to plug in a custom representation; see [Cursors](@ref)
+`MDBValueIO` to plug in a custom representation. See [Cursors](@ref)
 for a worked example.
 
 ```@docs

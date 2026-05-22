@@ -2,7 +2,7 @@
 A DB environment supports multiple databases, all residing in the same shared-memory map.
 
 Wrapping a raw `Ptr{MDB_env}` in `Environment(h)` takes ownership of the
-handle: it will be closed when the wrapper is garbage-collected, unless
+handle. The handle is closed when the wrapper is garbage-collected, unless
 `close` was already called explicitly. Closing is idempotent.
 """
 mutable struct Environment
@@ -76,8 +76,8 @@ end
     Environment(path::AbstractString; mapsize=nothing, maxreaders=nothing,
                 maxdbs=nothing, flags=0, mode=0o755) -> Environment
 
-One-call equivalent of `create()` + (optional) `setindex!` for `MapSize` /
-`Readers` / `DBs` + `open(env, path)`. Mirrors py-lmdb's
+One-call equivalent of `create()`, optional `setindex!` for `MapSize`,
+`Readers`, or `DBs`, and `open(env, path)`. Mirrors py-lmdb's
 `Environment(path, **kwargs)` and lmdb-rs's `EnvironmentBuilder.open(path)`.
 
 If anything fails between `create` and a successful `open`, the partially
@@ -104,7 +104,7 @@ end
 """Close the environment and release the memory map.
 
 Idempotent: calling `close` on an already-closed `Environment` is a
-silent no-op, matching the convention of `close(::IO)`. This makes
+silent no-op, matching the convention of `close(::IO)`. That makes
 finalizers safe to run after an explicit close.
 """
 function close(env::Environment)
@@ -293,7 +293,7 @@ function reader_check(env::Environment)
     return Int(dead[])
 end
 
-# Callback for `mdb_reader_list` — appends the message to the IOBuffer
+# Callback for `mdb_reader_list`: appends the message to the IOBuffer
 # referenced through `ctx`. Returns 0 to continue, non-zero to stop.
 function _reader_list_cb(msg::Ptr{Cchar}, ctx::Ptr{Cvoid})::Cint
     io = unsafe_pointer_to_objref(ctx)::IOBuffer

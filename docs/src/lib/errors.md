@@ -6,8 +6,8 @@ CurrentModule = LMDB
 
 Every LMDB-internal error surfaces as an `LMDBError` whose `code` field is
 the raw status `Cint` returned by the underlying binding. Status-code
-matchers cover the three most common branches; less common codes can be
-matched against `LMDB.MDB_*` constants directly.
+matchers cover the most common branches; less common codes can be matched
+against `LMDB.MDB_*` constants directly.
 
 ## Exception type
 
@@ -54,7 +54,7 @@ branch on `MDB_NOTFOUND`/`MDB_KEYEXIST` and friends.
 
 At the Julia wrappers, handle methods that wrap status-returning
 bindings let `LMDBError` propagate. `tryget` and `get(..., default)`
-swallow `MDB_NOTFOUND` and return `nothing`/`default`;
+swallow `MDB_NOTFOUND` and return `nothing` or `default`.
 `delete!(txn, dbi, key)` likewise swallows `MDB_NOTFOUND` and returns
 `false`.
 

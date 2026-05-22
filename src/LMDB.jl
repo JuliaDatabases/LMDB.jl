@@ -23,18 +23,18 @@ export
     # commonly-needed write flags
     MDB_NOOVERWRITE, MDB_NODUPDATA, MDB_APPEND, MDB_RESERVE,
 
-    # Julia wrappers — environment
+    # Julia wrappers: environment
     Environment, create, environment,
     sync, set!, unset!, info, stat, path, isopen, isflagset,
     reader_check, reader_list,
 
-    # Julia wrappers — transaction
+    # Julia wrappers: transaction
     Transaction, start, abort, commit, reset, renew,
 
-    # Julia wrappers — database (DBI)
+    # Julia wrappers: database (DBI)
     DBI, drop, get, put!, put_reserved!, delete!, tryget, replace!,
 
-    # Julia wrappers — cursor
+    # Julia wrappers: cursor
     Cursor, count, transaction, database,
     seek!, seek_last!, seek_range!, next!, prev!,
     key, value, item, walk,
@@ -100,7 +100,7 @@ done after `close(env)` without rewriting the database).
 is_map_full
 
 # ---------------------------------------------------------------------------
-# C API — raw bindings, types, constants. Public-but-unexported.
+# C API: raw bindings, types, constants. Public-but-unexported.
 #
 # Every status-returning binding has a `@checked` wrapper (auto-throws) and an
 # `unchecked_*` companion (returns the raw `Cint` for callers that need to
@@ -140,7 +140,7 @@ include("dbi.jl")
 include("cur.jl")
 
 # ---------------------------------------------------------------------------
-# High-level interface — `LMDBDict`.
+# High-level interface: `LMDBDict`.
 # ---------------------------------------------------------------------------
 
 include("dicts.jl")

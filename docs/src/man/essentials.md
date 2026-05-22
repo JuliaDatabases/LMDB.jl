@@ -47,15 +47,15 @@ or any bitstype scalar.
 LMDB.jl exposes the same database three ways, in increasing order of
 control:
 
-- The **high-level interface** ([`LMDBDict`](@ref)) is the
-  `AbstractDict{K,V}` surface — start here unless you need
+- The high-level interface ([`LMDBDict`](@ref)) is the
+  `AbstractDict{K,V}` surface. Start here unless you need
   transactional grouping or zero-copy reads.
-- The **Julia wrappers** (`Environment`, `Transaction`, `DBI`,
+- The Julia wrappers (`Environment`, `Transaction`, `DBI`,
   `Cursor`) give you explicit lifetimes and fine-grained control with
   finalizers, parent refs, and `do`-block forms. Drop down to these
   via [Environments](@ref) → [Transactions](@ref) →
   [Databases](@ref) → [Cursors](@ref).
-- The **C API** (`mdb_*`, `MDB_*`, `unchecked_mdb_*`) is the raw
+- The C API (`mdb_*`, `MDB_*`, `unchecked_mdb_*`) is the raw
   `@ccall` surface. `MDBValue`, `MDBArg`, and `MDBValueIO` glue Julia
   values to `Ptr{MDB_val}` and let custom decoders plug in via
   `Base.read(io, T)`. Reach for the [Low-level bindings](@ref) only
@@ -77,8 +77,8 @@ with a finalizer:
 Parent references pin the lifetime: a `Cursor` keeps its `Transaction`
 alive, which keeps its `Environment` alive. `close`, `commit`, and
 `abort` are idempotent: calling them twice, or on a handle that was
-never opened, is a silent no-op. So an abandoned write txn — say, from
-a `for … break` over an `LMDBDict`, or any error path — gets reclaimed
+never opened, is a silent no-op. An abandoned write txn (say, from a
+`for … break` over an `LMDBDict`, or any error path) gets reclaimed
 when GC runs.
 
 The do-block constructors are usually what you want:

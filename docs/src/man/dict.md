@@ -36,7 +36,7 @@ tasks.
 ## Storing and retrieving
 
 Anything that round-trips through the package's `MDB_val` glue and
-[`MDBValueIO`](@ref LMDB.MDBValueIO) works as a value type — `String`,
+[`MDBValueIO`](@ref LMDB.MDBValueIO) works as a value type: `String`,
 `Vector{T}` for any bitstype `T`, and any bitstype scalar (`Int`,
 `Float32`, `(Int, UInt32)` `Tuple`, …).
 
@@ -66,7 +66,7 @@ for (k, v) in d
 end
 ```
 
-Iteration is in **lexicographic key order** — strictly stronger than
+Iteration is in lexicographic key order, which is stricter than
 `Base.Dict`'s no-order promise. Each `for` loop opens a fresh read
 transaction; the txn is committed on normal exit and aborted (via the
 `Transaction` finalizer) on early break or throw.
@@ -97,7 +97,7 @@ filter!(((k, v),) -> v > 0, d)
 ## Prefix-scoped scans
 
 For hierarchical key schemes (e.g. `"users/123/name"`), LMDB's
-lexicographic order makes prefix scans cheap — they're a single
+lexicographic order makes prefix scans cheap: a single
 `MDB_SET_RANGE` plus iteration until the prefix stops matching.
 
 ```julia
@@ -119,7 +119,7 @@ LMDB.scan(d, prefix = "users/2/")
 #  "users/2/name"  => "Bob"
 ```
 
-For directory-style listings — leaf keys appear as-is, anything with
+For directory-style listings, leaf keys appear as-is and anything with
 the separator after the prefix collapses to its first segment:
 
 ```julia
@@ -127,7 +127,7 @@ LMDB.list_dirs(d, prefix = "")        # ["other", "users/"]
 LMDB.list_dirs(d, prefix = "users/")  # ["users/1/", "users/2/"]
 ```
 
-`LMDB.valuesize(d; prefix)` sums byte sizes — useful for quick storage
+`LMDB.valuesize(d; prefix)` sums byte sizes. Useful for quick storage
 audits without `stat`.
 
 ## When to drop down

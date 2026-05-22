@@ -63,18 +63,18 @@ end
 | `MDB_NOMETASYNC` | `fsync` data but not metadata |
 | `MDB_WRITEMAP`   | mmap as writable; faster but requires more discipline (no torn writes from other processes) |
 | `MDB_NOMEMINIT`  | skip zero-init of new pages |
-| `MDB_NOTLS`      | drop thread-local reader slots — needed for multiple read txns on one thread |
-| `MDB_NORDAHEAD`  | turn off OS-level read-ahead — better for cold-page workloads |
+| `MDB_NOTLS`      | drop thread-local reader slots, needed for multiple read txns on one thread |
+| `MDB_NORDAHEAD`  | turn off OS-level read-ahead, better for cold-page workloads |
 | `MDB_NOLOCK`     | the caller takes responsibility for locking |
 
-`MDB_RDONLY` can only be set at `open` time — calling `set!(env,
+`MDB_RDONLY` can only be set at `open` time. Calling `set!(env,
 MDB_RDONLY)` on an open env will return `EINVAL`.
 
 ## Sizing the map
 
 `mapsize` is a *virtual* limit on the env's address space, not the
 on-disk size. Pick a generous power of two (say, 1 GiB or 8 GiB) up
-front; the on-disk file grows incrementally as data is written.
+front. The on-disk file grows incrementally as data is written.
 
 If a write txn would exceed `mapsize`, LMDB returns `MDB_MAP_FULL`
 (catchable via [`is_map_full(::LMDBError)`](@ref is_map_full)). To
