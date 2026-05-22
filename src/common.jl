@@ -204,16 +204,13 @@ end
 end
 
 
-"""Return the LMDB library version and version information
-
-Function returns tuple `(VersionNumber, String)` that contains a library version and a library version string.
-"""
+"""Return the LMDB library version."""
 function version()
     major = Ref{Cint}()
     minor = Ref{Cint}()
     patch = Ref{Cint}()
     ver_str = mdb_version(major, minor, patch)
-    return VersionNumber(major[], minor[], patch[]), unsafe_string(ver_str)
+    return VersionNumber(major[], minor[], patch[])
 end
 
 """ Check if binary flag is set in provided value"""
