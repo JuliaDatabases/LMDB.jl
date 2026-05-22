@@ -22,7 +22,7 @@ LMDB.jl exposes the same database through three surfaces:
   `AbstractDict{K,V}` over a single LMDB file. Standard library
   machinery (`merge!`, `filter!`, `pairs`, iteration, …) works out
   of the box. Reach for this when you want a persistent `Dict`.
-- Julia wrappers: `Environment`, `Transaction`, `DBI`, `Cursor`.
+- Julia wrappers: `Environment`, `Transaction`, `Database`, `Cursor`.
   Julia-shaped wrappers around handles, transactions, and cursors,
   with finalizers, `do`-block forms, and so on. Use these when you
   want explicit transactions.

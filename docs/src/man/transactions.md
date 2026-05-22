@@ -22,7 +22,7 @@ The do-block form commits on normal return and aborts on throw:
 
 ```julia
 result = Transaction(env) do txn
-    DBI(txn) do dbi
+    Database(txn) do dbi
         put!(txn, dbi, "k", "v")
         get(txn, dbi, "k", String, nothing)
     end
@@ -50,7 +50,7 @@ pair is cheaper still:
 ```julia
 txn = Transaction(env; flags = LMDB.MDB_RDONLY)
 for batch in batches
-    DBI(txn) do dbi
+    Database(txn) do dbi
         for k in batch
             v = get(txn, dbi, k, String, nothing)
             handle(k, v)
@@ -74,7 +74,7 @@ parent; `abort` discards them, but the parent continues:
 
 ```julia
 Transaction(env) do parent
-    DBI(parent) do dbi
+    Database(parent) do dbi
         put!(parent, dbi, "before", "1")
         try
             Transaction(env; parent = parent) do child
@@ -102,7 +102,7 @@ reap slots left behind by crashed processes.
 Aggressive `for … break` over an `LMDBDict` without GC pressure can
 pile up read txns. If that becomes a problem, use
 [`walk(f, cur)`](@ref API-Cur-walk) inside an explicit
-`DBI(txn) do …` block instead.
+`Database(txn) do …` block instead.
 
 ## Picking flags
 

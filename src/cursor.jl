@@ -7,14 +7,14 @@
 """
 A handle to a cursor structure for navigating through a database.
 
-A `Cursor` keeps references to its parent `Transaction` and `DBI`, both
+A `Cursor` keeps references to its parent `Transaction` and `Database`, both
 to expose them via `transaction(cur)` / `database(cur)` and to keep the
 txn alive under GC. The cursor's finalizer closes any still-open handle.
 """
 mutable struct Cursor
     handle::Ptr{MDB_cursor}
     txn::Transaction
-    dbi::DBI
+    dbi::Database
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_cursor}}, c::Cursor) = c.handle
@@ -23,12 +23,12 @@ Base.unsafe_convert(::Type{Ptr{MDB_cursor}}, c::Cursor) = c.handle
 isopen(cur::Cursor) = cur.handle != C_NULL
 
 """
-    Cursor(txn::Transaction, dbi::DBI) -> Cursor
+    Cursor(txn::Transaction, dbi::Database) -> Cursor
 
 Open a cursor over `dbi` inside `txn`. The cursor is freed by its
 finalizer if `close` isn't called explicitly.
 """
-function Cursor(txn::Transaction, dbi::DBI)
+function Cursor(txn::Transaction, dbi::Database)
     cur_ptr_ref = Ref{Ptr{MDB_cursor}}(C_NULL)
     mdb_cursor_open(txn, dbi, cur_ptr_ref)
     cur = Cursor(cur_ptr_ref[], txn, dbi)
@@ -37,12 +37,12 @@ function Cursor(txn::Transaction, dbi::DBI)
 end
 
 """
-    Cursor(f::Function, txn::Transaction, dbi::DBI) -> result
+    Cursor(f::Function, txn::Transaction, dbi::Database) -> result
 
 `do`-block form: open a cursor, run `f(cur)`, close on the way out.
 Returns whatever `f` returns.
 """
-function Cursor(f::Function, txn::Transaction, dbi::DBI)
+function Cursor(f::Function, txn::Transaction, dbi::Database)
     cur = Cursor(txn, dbi)
     try
         f(cur)

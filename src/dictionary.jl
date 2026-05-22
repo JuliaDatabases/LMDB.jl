@@ -5,7 +5,7 @@ export LMDBDict
     LMDBDict{K,V}(path; readonly, rdahead, mapsize, readers, dbs)
 
 A persistent `AbstractDict{K,V}` backed by a single LMDB environment
-plus its default DBI. Keys and values are encoded as raw bytes;
+plus its default Database. Keys and values are encoded as raw bytes;
 `String`, `Vector{T}` (where `T` is bitstype), and any bitstype scalar
 all work.
 
@@ -14,8 +14,8 @@ see `LMDB.scan`, `LMDB.scan_keys`, `LMDB.scan_values`, and `LMDB.list_dirs`.
 """
 mutable struct LMDBDict{K,V} <: AbstractDict{K,V}
     env::LMDB.Environment
-    dbi::LMDB.DBI
-    function LMDBDict{K,V}(env::LMDB.Environment, dbi::LMDB.DBI) where {K,V}
+    dbi::LMDB.Database
+    function LMDBDict{K,V}(env::LMDB.Environment, dbi::LMDB.Database) where {K,V}
         x = new{K,V}(env, dbi)
         finalizer(x) do d
             LMDB.close(d.env, d.dbi)
@@ -38,7 +38,7 @@ function LMDBDict{K,V}(path::String; readonly = false, rdahead = false,
     env = LMDB.Environment(path; mapsize, maxreaders = readers, maxdbs = dbs,
                            flags = envflags)
     dbi = Transaction(env) do txn
-        DBI(txn)
+        Database(txn)
     end
     LMDBDict{K,V}(env, dbi)
 end

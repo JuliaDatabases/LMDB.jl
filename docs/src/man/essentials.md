@@ -38,7 +38,7 @@ close(d)
 
 Behind the scenes this opens an `Environment` with `MDB_NOTLS` (so
 multiple read transactions can coexist on a single thread) and a single
-default `DBI`. Type conversion happens automatically for anything the
+default `Database`. Type conversion happens automatically for anything the
 `MDBValue` constructor accepts: `String`, `Vector{T}` of bitstype `T`,
 or any bitstype scalar.
 
@@ -50,7 +50,7 @@ control:
 - The high-level interface ([`LMDBDict`](@ref)) is the
   `AbstractDict{K,V}` surface. Start here unless you need
   transactional grouping or zero-copy reads.
-- The Julia wrappers (`Environment`, `Transaction`, `DBI`,
+- The Julia wrappers (`Environment`, `Transaction`, `Database`,
   `Cursor`) give you explicit lifetimes and fine-grained control with
   finalizers, parent refs, and `do`-block forms. Drop down to these
   via [Environments](@ref) → [Transactions](@ref) →
@@ -71,7 +71,7 @@ with a finalizer:
 |--------|-----------|------------|
 | `Environment` | `close` (`mdb_env_close`) | – |
 | `Transaction` | `abort` (`mdb_txn_abort`) | `Environment` |
-| `Cursor` | `close` (`mdb_cursor_close`) | `Transaction`, `DBI` |
+| `Cursor` | `close` (`mdb_cursor_close`) | `Transaction`, `Database` |
 | `LMDBDict` | `close` env + dbi | – |
 
 Parent references pin the lifetime: a `Cursor` keeps its `Transaction`
@@ -86,7 +86,7 @@ The do-block constructors are usually what you want:
 ```julia
 Environment("/tmp/mydb"; flags = LMDB.MDB_NOTLS) do env
     Transaction(env) do txn
-        DBI(txn) do dbi
+        Database(txn) do dbi
             put!(txn, dbi, "k", "v")
         end
     end                       # commits on success, aborts on throw

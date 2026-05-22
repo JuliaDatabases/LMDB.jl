@@ -32,7 +32,7 @@ Everything `AbstractDict` derives (`merge!`, `merge`, `mergewith!`,
 
 ## Lifecycle
 
-`close(::LMDBDict)` closes the underlying env (and the default DBI).
+`close(::LMDBDict)` closes the underlying env (and the default Database).
 Idempotent, and also called from the finalizer.
 
 ## Prefix-scan helpers

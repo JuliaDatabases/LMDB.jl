@@ -4,7 +4,7 @@
 CurrentModule = LMDB
 ```
 
-A `Cursor` is a positioned iterator over a `DBI`. Use it for ordered
+A `Cursor` is a positioned iterator over a `Database`. Use it for ordered
 scans, range queries, or to amortise the per-lookup overhead of
 `mdb_get` across many keys.
 
@@ -12,7 +12,7 @@ scans, range queries, or to amortise the per-lookup overhead of
 
 ```julia
 Transaction(env; flags = LMDB.MDB_RDONLY) do txn
-    DBI(txn) do dbi
+    Database(txn) do dbi
         Cursor(txn, dbi) do cur
             # use cur
         end
@@ -67,7 +67,7 @@ A typical pattern for "all keys with a given prefix":
 ```julia
 prefix = "users/"
 Transaction(env; flags = LMDB.MDB_RDONLY) do txn
-    DBI(txn) do dbi
+    Database(txn) do dbi
         Cursor(txn, dbi) do cur
             k = seek_range!(cur, prefix, String)
             while k !== nothing && startswith(k, prefix)

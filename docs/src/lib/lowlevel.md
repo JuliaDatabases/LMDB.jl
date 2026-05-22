@@ -107,7 +107,7 @@ mdb_txn_reset
 mdb_txn_renew
 ```
 
-### Database (DBI)
+### Database (Database)
 
 ```julia
 mdb_dbi_open

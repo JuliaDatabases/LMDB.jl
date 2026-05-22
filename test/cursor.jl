@@ -6,14 +6,14 @@ val = "key value is "
 # Procedural style + block style smoke test, exercising cursor put!/walk
 # round-trip and the parent accessors.
 mktempdir() do dbname
-    env = Environment(dbname)
+    env = LMDB.Environment(dbname)
     try
-        txn = Transaction(env)
-        dbi = DBI(txn)
+        txn = LMDB.Transaction(env)
+        dbi = LMDB.Database(txn)
         LMDB.commit(txn)
 
-        txn = Transaction(env)
-        cur = Cursor(txn, dbi)
+        txn = LMDB.Transaction(env)
+        cur = LMDB.Cursor(txn, dbi)
         try
             @test 0 == put!(cur, key+1, val*string(key+1))
             @test 0 == put!(cur, key, val*string(key))
@@ -34,10 +34,10 @@ mktempdir() do dbname
     @test !isopen(env)
 
     # Block style: parent accessors return the actual handles, not synthetic ones.
-    Environment(dbname) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
-                Cursor(txn, dbi) do cur
+    LMDB.Environment(dbname) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
+                LMDB.Cursor(txn, dbi) do cur
                     @test LMDB.transaction(cur) === txn
                     @test LMDB.database(cur) === dbi
                     @test LMDB.seek!(cur, key, typeof(key)) == key
@@ -49,16 +49,16 @@ mktempdir() do dbname
     end
 end
 
-# Cursor positioning + walk primitives.
+# LMDB.Cursor positioning + walk primitives.
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
                 LMDB.put!(txn, dbi, "a", "1")
                 LMDB.put!(txn, dbi, "b", "2")
                 LMDB.put!(txn, dbi, "c", "3")
 
-                Cursor(txn, dbi) do cur
+                LMDB.Cursor(txn, dbi) do cur
                     @test LMDB.seek!(cur, String) == "a"
                     @test LMDB.value(cur, String) == "1"
                     @test LMDB.key(cur, String) == "a"
@@ -120,10 +120,10 @@ end
 
 # seek!/next! on an empty database returns nothing.
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
-                Cursor(txn, dbi) do cur
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
+                LMDB.Cursor(txn, dbi) do cur
                     @test LMDB.seek!(cur, String) === nothing
                     @test LMDB.seek_last!(cur, String) === nothing
                     @test LMDB.seek!(cur, "x", String) === nothing
@@ -140,18 +140,18 @@ mktempdir() do dir
     end
 end
 
-# Cursor.delete!: removes the entry the cursor is on; LMDB advances to
+# LMDB.Cursor.delete!: removes the entry the cursor is on; LMDB advances to
 # the next entry. Throws on an unpositioned cursor (EINVAL), unlike the
 # txn-based `delete!(txn, dbi, key)` which is Bool-returning on
 # MDB_NOTFOUND.
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
                 LMDB.put!(txn, dbi, "a", "1")
                 LMDB.put!(txn, dbi, "b", "2")
 
-                Cursor(txn, dbi) do cur
+                LMDB.Cursor(txn, dbi) do cur
                     @test LMDB.seek!(cur, "a", String) == "a"
                     LMDB.delete!(cur)             # removes "a", cursor now on "b"
                     LMDB.delete!(cur)             # removes "b"

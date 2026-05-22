@@ -4,16 +4,16 @@
 # dup-aware cursor ops navigate within and across keys correctly, and
 # that delete!(txn, dbi, key, val) removes one specific dup.
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn; flags = LMDB.MDB_DUPSORT) do dbi
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn; flags = LMDB.MDB_DUPSORT) do dbi
                 LMDB.put!(txn, dbi, "k1", "a")
                 LMDB.put!(txn, dbi, "k1", "b")
                 LMDB.put!(txn, dbi, "k1", "c")
                 LMDB.put!(txn, dbi, "k2", "x")
                 LMDB.put!(txn, dbi, "k2", "y")
 
-                Cursor(txn, dbi) do cur
+                LMDB.Cursor(txn, dbi) do cur
                     # Position at first entry; walk through k1's dups.
                     @test LMDB.seek!(cur, String) == "k1"
                     @test LMDB.value(cur, String) == "a"
@@ -37,7 +37,7 @@ mktempdir() do dir
                 end
 
                 # Count dups for k1 via cursor count().
-                Cursor(txn, dbi) do cur
+                LMDB.Cursor(txn, dbi) do cur
                     @test LMDB.seek!(cur, "k1", String) == "k1"
                     @test count(cur) == 3
                 end
@@ -45,7 +45,7 @@ mktempdir() do dir
                 # Dup-aware delete: delete!(txn, dbi, key, val) removes only
                 # that one duplicate.
                 LMDB.delete!(txn, dbi, "k1", "b")
-                Cursor(txn, dbi) do cur
+                LMDB.Cursor(txn, dbi) do cur
                     @test LMDB.seek!(cur, "k1", String) == "k1"
                     @test LMDB.value(cur, String) == "a"
                     @test LMDB.next_dup!(cur, String) == "c"  # "b" is gone

@@ -4,31 +4,31 @@
 CurrentModule = LMDB
 ```
 
-A `DBI` is a handle to one B-tree inside an environment. By default an
+A `Database` is a handle to one B-tree inside an environment. By default an
 env has a single anonymous database (the "main DB"); pass `maxdbs > 0`
 to `Environment` to support multiple named sub-databases.
 
-## Opening a DBI
+## Opening a Database
 
 ```julia
-dbi = DBI(txn)                      # main (unnamed) DB
-dbi = DBI(txn, "users")             # named sub-DB; needs maxdbs >= 1
-dbi = DBI(txn, "edges"; flags = LMDB.MDB_CREATE | LMDB.MDB_DUPSORT)
+dbi = Database(txn)                      # main (unnamed) DB
+dbi = Database(txn, "users")             # named sub-DB; needs maxdbs >= 1
+dbi = Database(txn, "edges"; flags = LMDB.MDB_CREATE | LMDB.MDB_DUPSORT)
 ```
 
-The do-block form closes the DBI on the way out:
+The do-block form closes the Database on the way out:
 
 ```julia
-DBI(txn, "users") do dbi
+Database(txn, "users") do dbi
     put!(txn, dbi, "1", "Ada")
 end
 ```
 
-In practice you'll rarely *want* to close a DBI handle explicitly. The
+In practice you'll rarely *want* to close a Database handle explicitly. The
 env owns it, and `mdb_dbi_close` is documented as rarely useful. The
-env's finalizer cascades through any open DBI handles.
+env's finalizer cascades through any open Database handles.
 
-## DBI flags
+## Database flags
 
 `flags` accepts a bitwise-or of:
 
@@ -86,7 +86,7 @@ Useful write flags:
 ```julia
 # Bulk import in sorted order:
 Transaction(env) do txn
-    DBI(txn) do dbi
+    Database(txn) do dbi
         for (k, v) in sorted_pairs
             put!(txn, dbi, k, v; flags = LMDB.MDB_APPEND)
         end

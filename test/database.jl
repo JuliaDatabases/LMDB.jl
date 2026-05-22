@@ -29,10 +29,10 @@ val = "key value is "
 # Procedural style + block style smoke test, exercising String, Int, and
 # Vector{Int} round-trips through put!/get/delete!.
 mktempdir() do dbname
-    env = Environment(dbname)
+    env = LMDB.Environment(dbname)
     try
-        txn = Transaction(env)
-        dbi = DBI(txn)
+        txn = LMDB.Transaction(env)
+        dbi = LMDB.Database(txn)
         put!(txn, dbi, key+1, val*string(key+1))
         put!(txn, dbi, key, val*string(key))
         put!(txn, dbi, key+2, key+2)
@@ -48,9 +48,9 @@ mktempdir() do dbname
     @test !isopen(env)
 
     # Block style
-    Environment(dbname; flags = LMDB.MDB_NOSYNC) do env
-        Transaction(env) do txn
-            DBI(txn; flags = Cuint(LMDB.MDB_REVERSEKEY)) do dbi
+    LMDB.Environment(dbname; flags = LMDB.MDB_NOSYNC) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn; flags = Cuint(LMDB.MDB_REVERSEKEY)) do dbi
                 k = key
                 value = get(txn, dbi, k, String)
                 @test value == val*string(k)
@@ -74,9 +74,9 @@ end
 # get-with-default / stat(txn, dbi) — fresh env so the entry count is
 # deterministic.
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
                 LMDB.put!(txn, dbi, "k1", "v1")
                 LMDB.put!(txn, dbi, "k2", "v2")
 
@@ -96,9 +96,9 @@ end
 
 # put_reserved!: callback-style MDB_RESERVE write.
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
                 # Write a 16-byte value where bytes 0..7 are a UInt64
                 # header and bytes 8..15 are payload. The buffer hands
                 # back is the LMDB-allocated mmap page; we fill it
@@ -131,9 +131,9 @@ end
 
 # delete!: Bool-returning, idempotent on MDB_NOTFOUND.
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
                 LMDB.put!(txn, dbi, "k1", "v1")
                 LMDB.put!(txn, dbi, "k2", "v2")
 
@@ -155,9 +155,9 @@ end
 
 # replace! / pop!
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
                 # replace! on a missing key returns nothing and creates the entry.
                 @test LMDB.replace!(txn, dbi, "k", "v1") === nothing
                 @test get(txn, dbi, "k", String, nothing) == "v1"
@@ -180,9 +180,9 @@ end
 # IO-based extension point (`Base.read(io::IO, ::Type{Point2D})`,
 # defined at module scope above).
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
                 LMDB.put!(txn, dbi, "origin", Point2D(0f0, 0f0))
                 LMDB.put!(txn, dbi, "p1",     Point2D(1.5f0, 2.5f0))
 
@@ -197,7 +197,7 @@ mktempdir() do dir
 
                 # Typed walk decodes both K and V through Base.read.
                 seen = Pair{String,Point2D}[]
-                Cursor(txn, dbi) do cur
+                LMDB.Cursor(txn, dbi) do cur
                     LMDB.walk(cur, String, Point2D) do k, v
                         push!(seen, k => v)
                     end
@@ -215,9 +215,9 @@ end
 # payload. Exercises the IO contract from inside user code (see
 # `FramedU64` / `FRAME_MAGIC` at module scope).
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
                 LMDB.put_reserved!(txn, dbi, "framed", 12) do buf
                     unsafe_store!(Ptr{UInt32}(pointer(buf)), FRAME_MAGIC)
                     unsafe_store!(Ptr{UInt64}(pointer(buf) + 4), htol(UInt64(0x1234_5678)))
@@ -232,9 +232,9 @@ end
 # Non-Array AbstractArray inputs (e.g. `ReinterpretArray`, contiguous
 # `SubArray`) flow through `cconvert(Ptr{MDB_val}, ::AbstractArray)`.
 mktempdir() do dir
-    Environment(dir) do env
-        Transaction(env) do txn
-            DBI(txn) do dbi
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            LMDB.Database(txn) do dbi
                 # ReinterpretArray view onto a backing UInt64 vector.
                 ra_key = reinterpret(UInt8, UInt64[0xdeadbeefcafef00d])
                 @test !(ra_key isa Array)
