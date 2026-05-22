@@ -25,12 +25,12 @@ include("liblmdb.jl")
 include("common.jl")
 
 # Julia wrappers
-include("env.jl")
-include("txn.jl")
-include("dbi.jl")
-include("cur.jl")
+include("environment.jl")
+include("transaction.jl")
+include("database.jl")
+include("cursor.jl")
 
 # High-level abstractions
-include("dicts.jl")
+include("dictionary.jl")
 
 end # module

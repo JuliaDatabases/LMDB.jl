@@ -1,4 +1,4 @@
-@testset "Dictionary-like interface" begin
+@testset "Dictionary interface" begin
 
     # Basic round-trip with String keys, Float64 values.
     mktempdir() do dir

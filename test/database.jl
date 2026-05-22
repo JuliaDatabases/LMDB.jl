@@ -20,7 +20,7 @@ function Base.read(io::IO, ::Type{FramedU64})
     FramedU64(ltoh(read(io, UInt64)))
 end
 
-@testset "DBI" begin
+@testset "Database" begin
 
 key = 10
 val = "key value is "

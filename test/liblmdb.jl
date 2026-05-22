@@ -1,4 +1,4 @@
-@testset "liblmdb" begin
+@testset "C interface" begin
 
 # @checked: status-returning bindings auto-throw an LMDBError on a
 # non-zero return.
