@@ -22,10 +22,10 @@ LMDB.jl exposes the same database through three surfaces:
   `AbstractDict{K,V}` over a single LMDB file. Standard library
   machinery (`merge!`, `filter!`, `pairs`, iteration, …) works out
   of the box. Reach for this when you want a persistent `Dict`.
-- Julia wrappers: `Environment`, `Transaction`, `Database`, `Cursor`.
-  Julia-shaped wrappers around handles, transactions, and cursors,
-  with finalizers, `do`-block forms, and so on. Use these when you
-  want explicit transactions.
+- Julia wrappers: `LMDB.Environment`, `LMDB.Transaction`,
+  `LMDB.Database`, `LMDB.Cursor`. Julia-shaped wrappers around
+  handles, transactions, and cursors, with finalizers, `do`-block
+  forms, and so on. Use these when you want explicit transactions.
 - C API: `LMDB.mdb_*` and `LMDB.MDB_*`. Raw `ccall` bindings and
   status-code constants. Use this when the Julia wrappers don't expose
   a particular API or you want to inspect status codes directly.
@@ -55,47 +55,44 @@ close(d)
 ```julia
 using LMDB
 
-env = Environment("/tmp/mydb"; mapsize = 1<<30, maxreaders = 510,
-                               flags   = LMDB.MDB_NOTLS | LMDB.MDB_NORDAHEAD)
-try
-    start(env) do txn                                  # auto-commits/aborts
-        open(txn) do dbi
+LMDB.Environment("/tmp/mydb"; mapsize = 1<<30, maxreaders = 510,
+                              flags   = LMDB.MDB_NOTLS | LMDB.MDB_NORDAHEAD) do env
+    LMDB.Transaction(env) do txn                       # auto-commits/aborts
+        LMDB.Database(txn) do dbi
             put!(txn, dbi, "k1", "hello")
             put!(txn, dbi, "k2", [1.0, 2.0, 3.0])
 
-            @show LMDB.tryget(txn, dbi, "k1", String)
+            @show LMDB.get(txn, dbi, "k1", String, nothing)
             @show LMDB.get(txn, dbi, "missing", String, "default")
             @show LMDB.stat(txn, dbi).entries
         end
     end
 
     # Cursor walk over the LMDB-owned mmap (zero-copy access).
-    start(env; flags = LMDB.MDB_RDONLY) do txn
-        open(txn) do dbi
-            open(txn, dbi) do cur
+    LMDB.Transaction(env; flags = LMDB.MDB_RDONLY) do txn
+        LMDB.Database(txn) do dbi
+            LMDB.Cursor(txn, dbi) do cur
                 LMDB.walk(cur, String, String) do k, v
                     println(k, " => ", v)
                 end
             end
         end
     end
-finally
-    close(env)
 end
 ```
 
 The package decodes `String`, `Vector{T}` for any bitstype `T`, and the
 primitive numeric types out of the box. To plug in a custom representation,
-define a `Base.read(io::IO, ::Type{T})` method; it will be picked up by `tryget`,
-`get`, `walk(f, cur, K, V)`, and the cursor accessors
+define a `Base.read(io::IO, ::Type{T})` method; it will be picked up by
+`LMDB.get`, `LMDB.walk(f, cur, K, V)`, and the cursor accessors
 `LMDB.key`/`LMDB.value`/`LMDB.item`.
-Status-code matchers live on `LMDBError`:
+
+For a missing-key tolerant lookup, prefer
+`LMDB.get(txn, dbi, key, T, default)` over `try`/`catch` on `LMDBError`:
 
 ```julia
-try
-    LMDB.get(txn, dbi, "missing", String)
-catch e
-    e isa LMDBError && LMDB.is_notfound(e) || rethrow()
+v = LMDB.get(txn, dbi, "missing", String, nothing)
+if v === nothing
     # treat as missing
 end
 ```
