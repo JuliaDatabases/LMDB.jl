@@ -56,4 +56,4 @@ mktempdir() do dir
     end
 end
 
-end  # @testset "DupSort"
+end

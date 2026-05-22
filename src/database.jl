@@ -137,7 +137,7 @@ Live byte usage = `(branch_pages + leaf_pages + overflow_pages) * psize`.
 function stat(txn::Transaction, dbi::DBI)
     s_ref = Ref{MDB_stat}()
     mdb_stat(txn, dbi, s_ref)
-    return _stat_namedtuple(s_ref[])
+    return stat_namedtuple(s_ref[])
 end
 
 """Get an item from a database. Throws `LMDBError` if `key` is not present."""

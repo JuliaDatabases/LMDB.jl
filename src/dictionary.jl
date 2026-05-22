@@ -67,7 +67,7 @@ function txn_dbi_do(f, d; readonly = false)
     end
 end
 
-@inline function _has_prefix(kv::LMDB.MDB_val, prefix::Vector{UInt8})
+@inline function has_prefix(kv::LMDB.MDB_val, prefix::Vector{UInt8})
     kv.mv_size < length(prefix) && return false
     p = Ptr{UInt8}(kv.mv_data)
     @inbounds for i in 1:length(prefix)
@@ -76,12 +76,12 @@ end
     return true
 end
 
-function _walk_prefix(f, cur, prefix::Vector{UInt8})
+function walk_prefix(f, cur, prefix::Vector{UInt8})
     if isempty(prefix)
         LMDB.walk(f, cur)
     else
         LMDB.walk(cur; from = prefix) do k_ref, v_ref
-            _has_prefix(k_ref[], prefix) || return false
+            has_prefix(k_ref[], prefix) || return false
             f(k_ref, v_ref)
             return nothing
         end
@@ -98,13 +98,13 @@ end
 function Base.iterate(d::LMDBDict)
     txn = LMDB.start(d.env; flags = Cuint(MDB_RDONLY))
     cur = LMDB.open(txn, d.dbi)
-    return _iter_step(d, txn, cur, MDB_FIRST)
+    return iter_step(d, txn, cur, MDB_FIRST)
 end
 Base.iterate(d::LMDBDict, (txn, cur)::Tuple{Transaction,Cursor}) =
-    _iter_step(d, txn, cur, MDB_NEXT)
+    iter_step(d, txn, cur, MDB_NEXT)
 
-function _iter_step(::LMDBDict{K,V}, txn::Transaction, cur::Cursor,
-                    op::MDB_cursor_op) where {K,V}
+function iter_step(::LMDBDict{K,V}, txn::Transaction, cur::Cursor,
+                   op::MDB_cursor_op) where {K,V}
     k_ref = Ref(MDBValue())
     v_ref = Ref(MDBValue())
     ret = LMDB.unchecked_mdb_cursor_get(cur, k_ref, v_ref, op)
@@ -273,7 +273,8 @@ function Base.filter!(f, d::LMDBDict{K,V}) where {K,V}
     return d
 end
 
-# --- prefix-scan helpers (LMDB-namespaced; not Base extensions) ---
+
+# --- prefix-scan helpers ---
 
 """
     scan(d::LMDBDict; prefix=UInt8[]) -> Vector{Pair{K,V}}
@@ -286,7 +287,7 @@ function scan(d::LMDBDict{K,V}; prefix = UInt8[]) where {K,V}
     bprefix = Vector{UInt8}(prefix)
     out = Pair{K,V}[]
     cursor_do(d, readonly = true) do cur
-        _walk_prefix(cur, bprefix) do k_ref, v_ref
+        walk_prefix(cur, bprefix) do k_ref, v_ref
             push!(out, Base.read(MDBValueIO(k_ref[]), K) =>
                        Base.read(MDBValueIO(v_ref[]), V))
         end
@@ -303,7 +304,7 @@ function scan_keys(d::LMDBDict{K}; prefix = UInt8[]) where K
     bprefix = Vector{UInt8}(prefix)
     out = K[]
     cursor_do(d, readonly = true) do cur
-        _walk_prefix(cur, bprefix) do k_ref, _
+        walk_prefix(cur, bprefix) do k_ref, _
             push!(out, Base.read(MDBValueIO(k_ref[]), K))
         end
     end
@@ -319,7 +320,7 @@ function scan_values(d::LMDBDict{K,V}; prefix = UInt8[]) where {K,V}
     bprefix = Vector{UInt8}(prefix)
     out = V[]
     cursor_do(d, readonly = true) do cur
-        _walk_prefix(cur, bprefix) do _, v_ref
+        walk_prefix(cur, bprefix) do _, v_ref
             push!(out, Base.read(MDBValueIO(v_ref[]), V))
         end
     end
@@ -367,7 +368,7 @@ function valuesize(d::LMDBDict; prefix = UInt8[])
     bprefix = Vector{UInt8}(prefix)
     total = 0
     cursor_do(d, readonly = true) do cur
-        _walk_prefix(cur, bprefix) do _, v_ref
+        walk_prefix(cur, bprefix) do _, v_ref
             total += Int(v_ref[].mv_size)
         end
     end

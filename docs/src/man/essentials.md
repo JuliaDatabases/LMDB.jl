@@ -106,10 +106,6 @@ catch e
 end
 ```
 
-Common branches have helpers (`is_notfound`, `is_keyexist`,
-`is_map_full`); rarer codes can be matched against `LMDB.MDB_*`
-constants directly. See [Errors](@ref API-Errors) for the full list.
-
 For the usual "missing key" case, prefer the no-throw paths:
 [`tryget(txn, dbi, key, T)`](@ref tryget) returns `nothing` on miss,
 and `get(txn, dbi, key, T, default)` falls back to `default`.

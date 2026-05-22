@@ -5,18 +5,18 @@
 # decoder against the abstract `IO`, without depending on
 # `LMDB.MDBValueIO` in its own type signatures).
 struct AtimedBlob end
-const _ATIME_PREFIX = 8
+const ATIME_PREFIX = 8
 
 function Base.read(io::IO, ::Type{AtimedBlob})
-    bytesavailable(io) < _ATIME_PREFIX && return UInt8[]
-    skip(io, _ATIME_PREFIX)
+    bytesavailable(io) < ATIME_PREFIX && return UInt8[]
+    skip(io, ATIME_PREFIX)
     return read(io, Vector{UInt8})
 end
 
 pack_atimed(atime::UInt64, payload::Vector{UInt8}) = begin
-    out = Vector{UInt8}(undef, _ATIME_PREFIX + length(payload))
+    out = Vector{UInt8}(undef, ATIME_PREFIX + length(payload))
     GC.@preserve out unsafe_store!(Ptr{UInt64}(pointer(out)), htol(atime))
-    copyto!(out, _ATIME_PREFIX + 1, payload, 1, length(payload))
+    copyto!(out, ATIME_PREFIX + 1, payload, 1, length(payload))
     out
 end
 
@@ -102,4 +102,4 @@ mktempdir() do dir
     end
 end
 
-end  # @testset "Integration"
+end

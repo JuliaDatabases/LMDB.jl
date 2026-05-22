@@ -76,8 +76,7 @@ LMDB.MDB_RDONLY)` on an open env will return `EINVAL`.
 on-disk size. Pick a generous power of two (say, 1 GiB or 8 GiB) up
 front. The on-disk file grows incrementally as data is written.
 
-If a write txn would exceed `mapsize`, LMDB returns `MDB_MAP_FULL`
-(catchable via [`is_map_full(::LMDBError)`](@ref is_map_full)). To
+If a write txn would exceed `mapsize`, LMDB returns `MDB_MAP_FULL`. To
 recover, close the env, raise `mapsize`, and reopen. The database
 itself does not need rewriting.
 

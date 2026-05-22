@@ -50,4 +50,4 @@ mktempdir() do dir
     end
 end
 
-end  # @testset "liblmdb"
+end
