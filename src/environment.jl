@@ -324,15 +324,24 @@ function reader_list(env::Environment)
     return String(take!(io))
 end
 
-function show(io::IO, env::Environment)
-    print(io,"Environment is ", isopen(env) ? (isempty(env.path) ? "created" : "opened") : "closed")
-    if !isempty(env.path)
-        print(io,"\nDB path: $(path(env))")
-        ei = info(env)
-        print(io,"\nSize of the data memory map: $(ei.mapsize)")
-        print(io,"\nID of the last used page: $(ei.last_pgno)")
-        print(io,"\nID of the last committed transaction: $(ei.last_txnid)")
-        print(io,"\nMax reader slots in the environment: $(ei.maxreaders)")
-        print(io,"\nMax reader slots used in the environment: $(ei.numreaders)")
-    end
+function Base.show(io::IO, env::Environment)
+    state = !isopen(env) ? "closed" :
+            isempty(env.path) ? "created" : "opened"
+    print(io, "Environment(", state)
+    isempty(env.path) || print(io, ", ", repr(env.path))
+    print(io, ")")
+end
+
+function Base.show(io::IO, ::MIME"text/plain", env::Environment)
+    state = !isopen(env) ? "closed" :
+            isempty(env.path) ? "created" : "opened"
+    print(io, "Environment is ", state)
+    isempty(env.path) && return
+    ei = info(env)
+    print(io, "\nDB path: ", path(env))
+    print(io, "\nSize of the data memory map: ", ei.mapsize)
+    print(io, "\nID of the last used page: ", ei.last_pgno)
+    print(io, "\nID of the last committed transaction: ", ei.last_txnid)
+    print(io, "\nMax reader slots in the environment: ", ei.maxreaders)
+    print(io, "\nMax reader slots used in the environment: ", ei.numreaders)
 end
