@@ -1,8 +1,8 @@
-export Cursor,
-       seek!, seek_last!, seek_range!, next!, prev!,
-       seek_first_dup!, seek_last_dup!,
-       next_dup!, prev_dup!, next_nodup!, prev_nodup!
-@public walk, transaction, database, key, value, item
+@public Cursor,
+        seek!, seek_last!, seek_range!, next!, prev!,
+        seek_first_dup!, seek_last_dup!,
+        next_dup!, prev_dup!, next_nodup!, prev_nodup!,
+        walk, transaction, database, key, value, item
 
 """
 A handle to a cursor structure for navigating through a database.

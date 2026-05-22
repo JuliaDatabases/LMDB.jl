@@ -10,8 +10,8 @@ database handle, and cursor lives inside one env.
 
 ## Creating and opening
 
-The one-call constructor applies any configuration and opens the
-directory in a single step:
+`Environment(path; kwargs...)` does the whole open dance — allocate
+the handle, set mapsize/maxreaders/maxdbs/flags, open the directory:
 
 ```julia
 env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
@@ -20,8 +20,8 @@ env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
                                flags      = LMDB.MDB_NOTLS)
 ```
 
-If anything fails partway through, the partially constructed env is
-closed before rethrowing.
+If anything fails on the way through, the half-open env is closed
+before the exception propagates.
 
 After the env is open, `[:Flags]` / `[:Readers]` / `[:MapSize]` /
 `[:DBs]` setindex! keys map to `mdb_env_set_flags` /

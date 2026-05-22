@@ -1,5 +1,4 @@
-export Transaction
-@public env, abort, commit, renew
+@public Transaction, env, abort, commit, renew
 
 """
 A database transaction. Every database operation requires a transaction.

@@ -1,5 +1,4 @@
-export DBI, put_reserved!
-@public flags
+@public DBI, put_reserved!, flags
 
 """
 A handle for an individual database in the DB environment.

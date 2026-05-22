@@ -1,7 +1,5 @@
-export Environment,
-       sync, set!, unset!, info,
-       reader_check, reader_list
-@public path
+@public Environment, sync, set!, unset!, info, path,
+        reader_check, reader_list
 
 """
 A DB environment supports multiple databases, all residing in the same shared-memory map.
@@ -30,13 +28,14 @@ isopen(env::Environment) = env.handle != C_NULL
     Environment(path::AbstractString; mapsize=nothing, maxreaders=nothing,
                 maxdbs=nothing, flags=0, mode=0o755) -> Environment
 
-Open an LMDB environment rooted at `path`. The directory must already
-exist and be writable. The configuration kwargs map to LMDB's
+Open the LMDB environment at `path`. The directory must already exist
+and be writable. The configuration kwargs go through
 `mdb_env_set_mapsize`, `mdb_env_set_maxreaders`, and `mdb_env_set_maxdbs`;
-`flags` is forwarded to `mdb_env_open`. Partial failures during set-up
-close the environment before rethrowing.
+`flags` is forwarded to `mdb_env_open`. If anything fails before the
+open completes, the half-open env is closed before the exception
+propagates.
 
-Mirrors py-lmdb's `Environment(path, **kwargs)` and lmdb-rs's
+The shape matches py-lmdb's `Environment(path, **kwargs)` and lmdb-rs's
 `EnvironmentBuilder.open(path)`.
 """
 function Environment(path::AbstractString; mapsize::Union{Integer,Nothing} = nothing,
@@ -64,8 +63,8 @@ end
 """
     Environment(f::Function, path::AbstractString; kwargs...) -> result
 
-`do`-block form: open the environment, run `f(env)`, and close on the
-way out (even if `f` throws). Returns whatever `f` returns.
+`do`-block form. Opens the env, runs `f(env)`, and closes it on the
+way out whether or not `f` throws. Returns whatever `f` returns.
 """
 function Environment(f::Function, path::AbstractString; kwargs...)
     env = Environment(path; kwargs...)
