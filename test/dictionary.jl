@@ -54,6 +54,28 @@ mktempdir() do dir
     close(d)
 end
 
+# empty/copy/merge/filter all fall back to in-memory Dict because an
+# LMDBDict can't be constructed without a path.
+mktempdir() do dir
+    d = LMDBDict{String, Int}(dir)
+    d["a"] = 1; d["b"] = 2; d["c"] = 3
+
+    @test empty(d) isa Dict{String, Int}
+    @test isempty(empty(d))
+    @test empty(d, Int64, Float32) isa Dict{Int64, Float32}
+
+    cp = copy(d)
+    @test cp isa Dict{String, Int}
+    @test cp == Dict("a" => 1, "b" => 2, "c" => 3)
+
+    @test filter(p -> isodd(p.second), d) isa Dict{String, Int}
+    @test filter(p -> isodd(p.second), d) == Dict("a" => 1, "c" => 3)
+
+    @test merge(d, Dict("b" => 20, "d" => 40)) == Dict("a" => 1, "b" => 20,
+                                                       "c" => 3, "d" => 40)
+    close(d)
+end
+
 # Int → Int with a numeric key range.
 mktempdir() do dir
     d = LMDBDict{Int64, Int16}(dir)

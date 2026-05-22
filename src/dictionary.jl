@@ -226,6 +226,18 @@ end
 # `==`, `hash`, `in(::Pair, d)` etc. all kick in for free now that
 # `iterate` and `length` are defined.
 
+"""
+    empty(d::LMDBDict[, K, V]) -> Dict{K,V}
+
+A fresh, in-memory `Dict{K,V}`. LMDBDict can't construct a new on-disk
+container without a path, so the canonical `empty` form falls back to
+the in-memory dict type. This in turn drives the default `copy`,
+`filter`, `merge`, and similar Base routines to return `Dict` rather
+than `LMDBDict`. Use `Dict(d)` to materialize the whole thing in
+memory, or `copy(env, path)` for an on-disk clone.
+"""
+Base.empty(::LMDBDict, ::Type{K}, ::Type{V}) where {K,V} = Dict{K,V}()
+
 # Override the bulk-update fallbacks so they land in a single LMDB write
 # txn. AbstractDict's default `merge!` / `mergewith!` / `filter!` call
 # `d[k]=v` / `delete!(d,k)` in a loop, and each of those opens its own
