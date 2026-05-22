@@ -6,7 +6,8 @@ struct LMDBError <: Exception
     msg::AbstractString
     LMDBError(code::Integer) = new(Cint(code), unsafe_string(mdb_strerror(code)))
 end
-show(io::IO, err::LMDBError) = print(io, "Code[$(err.code)]: $(err.msg)")
+Base.showerror(io::IO, err::LMDBError) =
+    print(io, "LMDBError(", err.code, "): ", err.msg)
 
 "Throw an `LMDBError` if `code` is non-zero. Returns `code` otherwise."
 @inline check(code) = iszero(code) ? code : throw(LMDBError(code))
