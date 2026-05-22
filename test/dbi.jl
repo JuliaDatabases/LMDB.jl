@@ -1,6 +1,28 @@
 using LMDB
 using Test
 
+# Fixtures for the typed-read extension-point tests below. Defined at
+# module scope because `const` and `struct` aren't allowed inside a
+# `@testset` block.
+struct Point2D
+    x::Float32
+    y::Float32
+end
+Base.read(io::IO, ::Type{Point2D}) = read!(io, Ref{Point2D}())[]
+
+struct FramedU64
+    value::UInt64
+end
+const FRAME_MAGIC = htol(UInt32(0xCAFEF00D))
+function Base.read(io::IO, ::Type{FramedU64})
+    magic = read(io, UInt32)
+    magic == FRAME_MAGIC || error("bad magic 0x$(string(magic, base=16))")
+    pos_before = position(io)
+    skip(io, 0)
+    @assert position(io) == pos_before
+    FramedU64(ltoh(read(io, UInt64)))
+end
+
 @testset "DBI" begin
 
 key = 10
@@ -154,6 +176,59 @@ mktempdir() do dir
                 @test LMDB.tryget(txn, dbi, "k", String) === nothing
                 # pop! on a missing key returns nothing.
                 @test LMDB.pop!(txn, dbi, "k", String) === nothing
+            end
+        end
+    end
+end
+
+# Round-trip a custom bitstype through put!/tryget/walk using only the
+# IO-based extension point (`Base.read(io::IO, ::Type{Point2D})`,
+# defined at module scope above).
+mktempdir() do dir
+    environment(dir) do env
+        start(env) do txn
+            open(txn) do dbi
+                LMDB.put!(txn, dbi, "origin", Point2D(0f0, 0f0))
+                LMDB.put!(txn, dbi, "p1",     Point2D(1.5f0, 2.5f0))
+
+                @test LMDB.tryget(txn, dbi, "p1", Point2D)     == Point2D(1.5f0, 2.5f0)
+                @test LMDB.tryget(txn, dbi, "origin", Point2D) == Point2D(0f0, 0f0)
+                @test get(txn, dbi, "p1", Point2D)             == Point2D(1.5f0, 2.5f0)
+
+                # The Vector{E} overload also works for any bitstype E,
+                # without the user defining anything extra.
+                @test LMDB.tryget(txn, dbi, "p1", Vector{Point2D}) ==
+                      [Point2D(1.5f0, 2.5f0)]
+
+                # Typed walk decodes both K and V through Base.read.
+                seen = Pair{String,Point2D}[]
+                LMDB.open(txn, dbi) do cur
+                    LMDB.walk(cur, String, Point2D) do k, v
+                        push!(seen, k => v)
+                    end
+                end
+                @test sort(seen; by = first) ==
+                      ["origin" => Point2D(0f0, 0f0),
+                       "p1"     => Point2D(1.5f0, 2.5f0)]
+            end
+        end
+    end
+end
+
+# Framed values: a custom `Base.read` can use the IO interface
+# (`skip`, `position`) to step past a header before decoding the
+# payload. Exercises the IO contract from inside user code (see
+# `FramedU64` / `FRAME_MAGIC` at module scope).
+mktempdir() do dir
+    environment(dir) do env
+        start(env) do txn
+            open(txn) do dbi
+                LMDB.put_reserved!(txn, dbi, "framed", 12) do buf
+                    unsafe_store!(Ptr{UInt32}(pointer(buf)), FRAME_MAGIC)
+                    unsafe_store!(Ptr{UInt64}(pointer(buf) + 4), htol(UInt64(0x1234_5678)))
+                end
+                @test LMDB.tryget(txn, dbi, "framed", FramedU64) ==
+                      FramedU64(0x1234_5678)
             end
         end
     end
