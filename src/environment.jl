@@ -31,11 +31,10 @@ isopen(env::Environment) = env.handle != C_NULL
 Open the LMDB environment at `path`. The directory must already exist
 and be writable. The configuration kwargs go through
 `mdb_env_set_mapsize`, `mdb_env_set_maxreaders`, and `mdb_env_set_maxdbs`;
-`flags` is forwarded to `mdb_env_open`. If anything fails before the
-open completes, the half-open env is closed before the exception
-propagates.
+`flags` is forwarded to `mdb_env_open`. If anything fails along the
+way, the partially-built env is closed before rethrowing.
 
-The shape matches py-lmdb's `Environment(path, **kwargs)` and lmdb-rs's
+Matches py-lmdb's `Environment(path, **kwargs)` and lmdb-rs's
 `EnvironmentBuilder.open(path)`.
 """
 function Environment(path::AbstractString; mapsize::Union{Integer,Nothing} = nothing,
@@ -64,7 +63,7 @@ end
     Environment(f::Function, path::AbstractString; kwargs...) -> result
 
 `do`-block form. Opens the env, runs `f(env)`, closes it on the way
-out — even if `f` throws. Returns whatever `f` returns.
+out, even if `f` throws. Returns whatever `f` returns.
 """
 function Environment(f::Function, path::AbstractString; kwargs...)
     env = Environment(path; kwargs...)

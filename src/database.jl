@@ -156,7 +156,7 @@ end
     get(txn::Transaction, dbi::Database, key, ::Type{T}) -> T
 
 Read the value at `key`, decoded as `T`. Throws `LMDBError` if `key`
-isn't there — the same shape as `d[k]` on a regular `AbstractDict`.
+isn't there, the same as `d[k]` on a regular `AbstractDict`.
 """
 @inline function get(txn::Transaction, dbi::Database, key, ::Type{T}) where T
     val_ref = Ref(MDBValue())
@@ -168,8 +168,8 @@ end
     get(txn::Transaction, dbi::Database, key, ::Type{T}, default) -> Union{T,typeof(default)}
 
 Read the value at `key`, decoded as `T`; return `default` if the key
-isn't there. Same shape as `Base.get(dict, key, default)`. Pass
-`nothing` as `default` for the `Union{T,Nothing}` form.
+isn't there. Mirrors `Base.get(dict, key, default)`. Pass `nothing`
+as `default` for the `Union{T,Nothing}` form.
 """
 @inline function get(txn::Transaction, dbi::Database, key, ::Type{T}, default) where T
     val_ref = Ref(MDBValue())
