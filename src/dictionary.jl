@@ -121,8 +121,6 @@ function iter_step(::LMDBDict{K,V}, txn::Transaction, cur::Cursor,
             Base.read(LMDB.MDBValueIO(v_ref[]), V), (txn, cur))
 end
 
-Base.IteratorSize(::Type{<:LMDBDict}) = Base.HasLength()
-
 function Base.length(d::LMDBDict)
     txn_dbi_do(d, readonly = true) do txn, dbi
         Int(LMDB.stat(txn, dbi).entries)
