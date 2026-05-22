@@ -51,7 +51,7 @@ end
 
 """Open an environment handle
 
-`open` function accepts folowing parameters:
+`open` function accepts following parameters:
 * `env` db environment object
 * `path` directory in which the database files reside
 * `flags` defines special options for the environment
@@ -150,7 +150,7 @@ end
 
 """Set environment flags and parameters
 
-`setindex!` accepts folowing parameters:
+`setindex!` accepts following parameters:
 * `env` db environment object
 * `option` symbol which indicates parameter. Currently supported parameters:
     * Flags
@@ -159,7 +159,7 @@ end
     * DBs
 * `value` parameter value
 
-**Note:** Consult LMDB documentation for particual values of environment parameters and flags.
+**Note:** Consult LMDB documentation for particular values of environment parameters and flags.
 """
 function setindex!(env::Environment, val::Integer, option::Symbol)
     if option == :Flags
@@ -179,14 +179,14 @@ end
 
 """Get environment flags and parameters
 
-`getindex` accepts folowing parameters:
+`getindex` accepts following parameters:
 * `env` db environment object
 * `option` symbol which indicates parameter. Currently supported parameters:
     * Flags
     * Readers
     * KeySize
 
-**Note:** Consult LMDB documentation for particual values of environment parameters and flags.
+**Note:** Consult LMDB documentation for particular values of environment parameters and flags.
 """
 function getindex(env::Environment, option::Symbol)
     value = Ref{Cuint}(0)
