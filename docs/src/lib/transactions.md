@@ -12,7 +12,7 @@ concurrent readers but only one writer at a time.
 
 ```@docs
 Transaction
-start
+Transaction(::Environment)
 ```
 
 ## Lifecycle
@@ -36,7 +36,7 @@ renew(::Transaction)
 
 ## Sub-transactions
 
-Pass `parent = txn` to [`start`](@ref) to nest a child write transaction
-inside an open write transaction. The child sees the parent's uncommitted
-state; on `commit` the child's changes are folded into the parent, on
-`abort` they are discarded.
+Pass `parent = txn` to [`Transaction`](@ref) to nest a child write
+transaction inside an open write transaction. The child sees the
+parent's uncommitted state; on `commit` the child's changes are folded
+into the parent, on `abort` they are discarded.

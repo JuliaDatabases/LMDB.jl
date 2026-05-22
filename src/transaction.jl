@@ -1,5 +1,5 @@
-export Transaction, start, abort, commit, renew
-@public env
+export Transaction
+@public env, abort, commit, renew
 
 """
 A database transaction. Every database operation requires a transaction.
@@ -13,13 +13,6 @@ aborted by its finalizer.
 mutable struct Transaction
     handle::Ptr{MDB_txn}
     env::Environment
-    function Transaction(env::Environment, h::Ptr{MDB_txn})
-        t = new(h, env)
-        # Track on the env so `close(env)` can abort us if the caller forgot.
-        push!(env.txns, WeakRef(t))
-        finalizer(_finalize_txn, t)
-        return t
-    end
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_txn}}, t::Transaction) = t.handle
@@ -30,27 +23,44 @@ env(txn::Transaction) = txn.env
 "Check if transaction is open."
 isopen(txn::Transaction) = txn.handle != C_NULL
 
-"""Create a transaction for use with the environment
-
-`start` function creates a new transaction and returns `Transaction` object.
-It allows to set transaction flags with `flags` option.
 """
-function start(env::Environment; flags::Integer=zero(Cuint),
-               parent::Union{Transaction,Nothing} = nothing)
+    Transaction(env::Environment; flags=0, parent=nothing) -> Transaction
+
+Begin a transaction against `env`. `flags` is forwarded to
+`mdb_txn_begin` (e.g. `MDB_RDONLY` for a read-only txn). `parent` lets
+you nest a write txn inside an existing one. Call `commit` to persist
+or `abort` to discard; a dropped transaction is aborted by its
+finalizer.
+"""
+function Transaction(env::Environment; flags::Integer = zero(Cuint),
+                     parent::Union{Transaction,Nothing} = nothing)
     txn_ref = Ref{Ptr{MDB_txn}}(C_NULL)
     p = parent === nothing ? C_NULL : parent
     mdb_txn_begin(env, p, Cuint(flags), txn_ref)
-    return Transaction(env, txn_ref[])
+    txn = Transaction(txn_ref[], env)
+    # Track on the env so `close(env)` can abort us if the caller forgot.
+    push!(env.txns, WeakRef(txn))
+    finalizer(_finalize_txn, txn)
+    return txn
 end
-function start(f::Function, env::Environment; flags::Integer=zero(Cuint))
-    txn = start(env, flags=Cuint(flags))
+
+"""
+    Transaction(f::Function, env::Environment; kwargs...) -> result
+
+`do`-block form: begin a transaction, run `f(txn)`, commit on a normal
+return, abort if `f` throws. Returns whatever `f` returns.
+"""
+function Transaction(f::Function, env::Environment;
+                     flags::Integer = zero(Cuint),
+                     parent::Union{Transaction,Nothing} = nothing)
+    txn = Transaction(env; flags = Cuint(flags), parent)
     try
         r = f(txn)
         commit(txn)
-        r
-    catch e
+        return r
+    catch
         abort(txn)
-        rethrow(e)
+        rethrow()
     end
 end
 

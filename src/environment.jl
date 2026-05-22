@@ -1,4 +1,4 @@
-export Environment, create, environment,
+export Environment,
        sync, set!, unset!, info,
        reader_check, reader_list
 @public path
@@ -6,9 +6,8 @@ export Environment, create, environment,
 """
 A DB environment supports multiple databases, all residing in the same shared-memory map.
 
-Wrapping a raw `Ptr{MDB_env}` in `Environment(h)` takes ownership of the
-handle. The handle is closed when the wrapper is garbage-collected, unless
-`close` was already called explicitly. Closing is idempotent.
+The handle is closed when the wrapper is garbage-collected, unless `close`
+was already called explicitly. Closing is idempotent.
 """
 mutable struct Environment
     handle::Ptr{MDB_env}
@@ -17,93 +16,64 @@ mutable struct Environment
     # walks this list to abort any still-open txn before calling
     # `mdb_env_close`; otherwise LMDB corrupts state shared across envs.
     txns::Vector{WeakRef}
-    function Environment(h::Ptr{MDB_env} = C_NULL)
-        e = new(h, "", WeakRef[])
-        finalizer(close, e)
-        return e
-    end
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_env}}, e::Environment) = e.handle
 
-"Return the path that was used in `open`"
+"Return the path that was used to open the environment."
 path(env::Environment) = env.path
 
 "Check if environment is open"
 isopen(env::Environment) = env.handle != C_NULL
 
-"Create an LMDB environment handle"
-function create()
-    env_ref = Ref{Ptr{MDB_env}}()
-    mdb_env_create(env_ref)
-    return Environment(env_ref[])
-end
-
-"Wrapper of `create` for `do` construct"
-function create(f::Function)
-    env = create()
-    try
-        f(env)
-    finally
-        close(env)
-    end
-end
-
-"""Open an environment handle
-
-`open` function accepts following parameters:
-* `env` db environment object
-* `path` directory in which the database files reside
-* `flags` defines special options for the environment
-* `mode` UNIX permissions to set on created files
-
-*Note:* A database directory must exist and be writable.
-"""
-function open(env::Environment, path::String; flags::Integer=zero(Cuint),
-              mode::Integer = mode_t(0o755))
-    env.path = path
-    mdb_env_open(env, path, Cuint(flags), mode_t(mode))
-end
-
-"Wrapper of `open` for `do` construct"
-function environment(f::Function, path::String; flags::Integer=zero(Cuint),
-                     mode::Integer = mode_t(0o755))
-    env = create()
-    try
-        open(env, path; flags = Cuint(flags), mode = mode_t(mode))
-        f(env)
-    finally
-        close(env)
-    end
-end
-
 """
     Environment(path::AbstractString; mapsize=nothing, maxreaders=nothing,
                 maxdbs=nothing, flags=0, mode=0o755) -> Environment
 
-One-call equivalent of `create()`, optional `setindex!` for `MapSize`,
-`Readers`, or `DBs`, and `open(env, path)`. Mirrors py-lmdb's
-`Environment(path, **kwargs)` and lmdb-rs's `EnvironmentBuilder.open(path)`.
+Open an LMDB environment rooted at `path`. The directory must already
+exist and be writable. The configuration kwargs map to LMDB's
+`mdb_env_set_mapsize`, `mdb_env_set_maxreaders`, and `mdb_env_set_maxdbs`;
+`flags` is forwarded to `mdb_env_open`. Partial failures during set-up
+close the environment before rethrowing.
 
-If anything fails between `create` and a successful `open`, the partially
-constructed environment is closed before rethrowing.
+Mirrors py-lmdb's `Environment(path, **kwargs)` and lmdb-rs's
+`EnvironmentBuilder.open(path)`.
 """
 function Environment(path::AbstractString; mapsize::Union{Integer,Nothing} = nothing,
                      maxreaders::Union{Integer,Nothing} = nothing,
                      maxdbs::Union{Integer,Nothing} = nothing,
                      flags::Integer = zero(Cuint),
                      mode::Integer = mode_t(0o755))
-    env = create()
+    env_ref = Ref{Ptr{MDB_env}}()
+    mdb_env_create(env_ref)
+    env = Environment(env_ref[], "", WeakRef[])
+    finalizer(close, env)
     try
         mapsize    === nothing || (env[:MapSize] = mapsize)
         maxreaders === nothing || (env[:Readers] = maxreaders)
         maxdbs     === nothing || (env[:DBs]     = maxdbs)
-        open(env, String(path); flags = Cuint(flags), mode = mode_t(mode))
+        env.path = String(path)
+        mdb_env_open(env, env.path, Cuint(flags), mode_t(mode))
     catch
         close(env)
         rethrow()
     end
     return env
+end
+
+"""
+    Environment(f::Function, path::AbstractString; kwargs...) -> result
+
+`do`-block form: open the environment, run `f(env)`, and close on the
+way out (even if `f` throws). Returns whatever `f` returns.
+"""
+function Environment(f::Function, path::AbstractString; kwargs...)
+    env = Environment(path; kwargs...)
+    try
+        f(env)
+    finally
+        close(env)
+    end
 end
 
 """Close the environment and release the memory map.

@@ -14,17 +14,30 @@ Base.cconvert(::Type{MDB_dbi}, d::DBI) = d.handle
 "Check if database is open"
 isopen(dbi::DBI) = dbi.handle != zero(Cuint)
 
-"Open a database in the environment"
-function open(txn::Transaction, dbname::String = ""; flags::Integer = zero(Cuint))
-    cdbname = length(dbname) > 0 ? dbname : Ptr{Cchar}(C_NULL)
+"""
+    DBI(txn::Transaction, dbname::AbstractString = ""; flags=0) -> DBI
+
+Open a named sub-database inside the transaction. An empty `dbname`
+opens the environment's default DB. `flags` is forwarded to
+`mdb_dbi_open` (e.g. `MDB_CREATE`, `MDB_DUPSORT`).
+"""
+function DBI(txn::Transaction, dbname::AbstractString = "";
+             flags::Integer = zero(Cuint))
+    cdbname = length(dbname) > 0 ? String(dbname) : Ptr{Cchar}(C_NULL)
     handle = Ref{MDB_dbi}()
     mdb_dbi_open(txn, cdbname, Cuint(flags), handle)
-    return DBI(handle[], dbname)
+    return DBI(handle[], String(dbname))
 end
 
-"Wrapper of DBI `open` for `do` construct"
-function open(f::Function, txn::Transaction, dbname::String = ""; flags::Integer = zero(Cuint))
-    dbi = open(txn, dbname, flags=Cuint(flags))
+"""
+    DBI(f::Function, txn::Transaction, dbname::AbstractString = ""; kwargs...) -> result
+
+`do`-block form: open `dbname`, run `f(dbi)`, close the handle on the
+way out. Returns whatever `f` returns.
+"""
+function DBI(f::Function, txn::Transaction, dbname::AbstractString = "";
+             flags::Integer = zero(Cuint))
+    dbi = DBI(txn, dbname; flags = Cuint(flags))
     tenv = env(txn)
     try
         f(dbi)

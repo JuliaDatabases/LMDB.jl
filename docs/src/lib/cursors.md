@@ -11,7 +11,7 @@ are bound to a transaction. Closing the txn invalidates the cursor.
 
 ```@docs
 Cursor
-Base.open(::Transaction, ::DBI)
+Cursor(::Transaction, ::DBI)
 Base.close(::Cursor)
 Base.isopen(::Cursor)
 renew(::Transaction, ::Cursor)

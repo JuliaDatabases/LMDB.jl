@@ -84,9 +84,9 @@ when GC runs.
 The do-block constructors are usually what you want:
 
 ```julia
-environment("/tmp/mydb"; flags = LMDB.MDB_NOTLS) do env
-    start(env) do txn
-        open(txn) do dbi
+Environment("/tmp/mydb"; flags = LMDB.MDB_NOTLS) do env
+    Transaction(env) do txn
+        DBI(txn) do dbi
             put!(txn, dbi, "k", "v")
         end
     end                       # commits on success, aborts on throw
@@ -95,17 +95,7 @@ end                           # closes env
 
 ## Errors
 
-Every LMDB-internal error surfaces as an `LMDBError`:
-
-```julia
-try
-    LMDB.get(txn, dbi, "missing", String)
-catch e
-    e isa LMDBError && is_notfound(e) || rethrow()
-    # treat as missing
-end
-```
-
-For the usual "missing key" case, prefer the no-throw paths:
+Every LMDB-internal error surfaces as an `LMDBError`. For the usual
+"missing key" case, prefer the no-throw paths:
 [`tryget(txn, dbi, key, T)`](@ref tryget) returns `nothing` on miss,
 and `get(txn, dbi, key, T, default)` falls back to `default`.

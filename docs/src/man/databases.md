@@ -11,15 +11,15 @@ to `Environment` to support multiple named sub-databases.
 ## Opening a DBI
 
 ```julia
-dbi = open(txn)                      # main (unnamed) DB
-dbi = open(txn, "users")             # named sub-DB; needs maxdbs >= 1
-dbi = open(txn, "edges"; flags = LMDB.MDB_CREATE | LMDB.MDB_DUPSORT)
+dbi = DBI(txn)                      # main (unnamed) DB
+dbi = DBI(txn, "users")             # named sub-DB; needs maxdbs >= 1
+dbi = DBI(txn, "edges"; flags = LMDB.MDB_CREATE | LMDB.MDB_DUPSORT)
 ```
 
 The do-block form closes the DBI on the way out:
 
 ```julia
-open(txn, "users") do dbi
+DBI(txn, "users") do dbi
     put!(txn, dbi, "1", "Ada")
 end
 ```
@@ -86,8 +86,8 @@ Useful write flags:
 
 ```julia
 # Bulk import in sorted order:
-start(env) do txn
-    open(txn) do dbi
+Transaction(env) do txn
+    DBI(txn) do dbi
         for (k, v) in sorted_pairs
             put!(txn, dbi, k, v; flags = LMDB.MDB_APPEND)
         end

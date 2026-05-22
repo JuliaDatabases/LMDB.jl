@@ -6,14 +6,14 @@ CurrentModule = LMDB
 
 A `DBI` (database identifier) is a handle to one B-tree inside an
 environment. By default an env has a single anonymous database (the
-"main DB"); pass `maxdbs > 0` to `Environment` and a name to `open` to
-work with multiple named sub-databases.
+"main DB"); pass `maxdbs > 0` to `Environment` and a name to the `DBI`
+constructor to work with multiple named sub-databases.
 
 ## Construction
 
 ```@docs
 DBI
-Base.open(::Transaction, ::String)
+DBI(::Transaction, ::AbstractString)
 Base.close(::Environment, ::DBI)
 Base.isopen(::DBI)
 flags

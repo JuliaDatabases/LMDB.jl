@@ -15,11 +15,6 @@ mutable struct Cursor
     handle::Ptr{MDB_cursor}
     txn::Transaction
     dbi::DBI
-    function Cursor(txn::Transaction, dbi::DBI, h::Ptr{MDB_cursor})
-        c = new(h, txn, dbi)
-        finalizer(close, c)
-        return c
-    end
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_cursor}}, c::Cursor) = c.handle
@@ -27,16 +22,28 @@ Base.unsafe_convert(::Type{Ptr{MDB_cursor}}, c::Cursor) = c.handle
 "Check if cursor is open"
 isopen(cur::Cursor) = cur.handle != C_NULL
 
-"Create a cursor"
-function open(txn::Transaction, dbi::DBI)
+"""
+    Cursor(txn::Transaction, dbi::DBI) -> Cursor
+
+Open a cursor over `dbi` inside `txn`. The cursor is freed by its
+finalizer if `close` isn't called explicitly.
+"""
+function Cursor(txn::Transaction, dbi::DBI)
     cur_ptr_ref = Ref{Ptr{MDB_cursor}}(C_NULL)
     mdb_cursor_open(txn, dbi, cur_ptr_ref)
-    return Cursor(txn, dbi, cur_ptr_ref[])
+    cur = Cursor(cur_ptr_ref[], txn, dbi)
+    finalizer(close, cur)
+    return cur
 end
 
-"Wrapper of Cursor `open` for `do` construct"
-function open(f::Function, txn::Transaction, dbi::DBI)
-    cur = open(txn, dbi)
+"""
+    Cursor(f::Function, txn::Transaction, dbi::DBI) -> result
+
+`do`-block form: open a cursor, run `f(cur)`, close on the way out.
+Returns whatever `f` returns.
+"""
+function Cursor(f::Function, txn::Transaction, dbi::DBI)
+    cur = Cursor(txn, dbi)
     try
         f(cur)
     finally

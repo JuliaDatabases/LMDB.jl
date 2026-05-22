@@ -11,9 +11,9 @@ scans, range queries, or to amortise the per-lookup overhead of
 ## Opening a cursor
 
 ```julia
-start(env; flags = LMDB.MDB_RDONLY) do txn
-    open(txn) do dbi
-        open(txn, dbi) do cur
+Transaction(env; flags = LMDB.MDB_RDONLY) do txn
+    DBI(txn) do dbi
+        Cursor(txn, dbi) do cur
             # use cur
         end
     end
@@ -66,9 +66,9 @@ A typical pattern for "all keys with a given prefix":
 
 ```julia
 prefix = "users/"
-start(env; flags = LMDB.MDB_RDONLY) do txn
-    open(txn) do dbi
-        open(txn, dbi) do cur
+Transaction(env; flags = LMDB.MDB_RDONLY) do txn
+    DBI(txn) do dbi
+        Cursor(txn, dbi) do cur
             k = seek_range!(cur, prefix, String)
             while k !== nothing && startswith(k, prefix)
                 v = LMDB.value(cur, String)
@@ -174,8 +174,8 @@ expensive. Park the txn with [`reset`](@ref Base.reset(::LMDB.Transaction))
 and refresh both the txn and the cursor with `renew(txn, cur)`:
 
 ```julia
-txn = start(env; flags = LMDB.MDB_RDONLY)
-cur = open(txn, dbi)
+txn = Transaction(env; flags = LMDB.MDB_RDONLY)
+cur = Cursor(txn, dbi)
 while running
     ...                # use cur
     reset(txn)

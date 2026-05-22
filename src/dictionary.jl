@@ -37,8 +37,8 @@ function LMDBDict{K,V}(path::String; readonly = false, rdahead = false,
     readonly && (envflags |= Cuint(MDB_RDONLY))
     env = LMDB.Environment(path; mapsize, maxreaders = readers, maxdbs = dbs,
                            flags = envflags)
-    dbi = LMDB.start(env) do txn
-        LMDB.open(txn)
+    dbi = Transaction(env) do txn
+        DBI(txn)
     end
     LMDBDict{K,V}(env, dbi)
 end
@@ -53,8 +53,8 @@ end
 
 function cursor_do(f, d; readonly = false)
     txnflags = readonly ? Cuint(LMDB.MDB_RDONLY) : Cuint(0)
-    LMDB.start(d.env, flags = txnflags) do txn
-        LMDB.open(txn, d.dbi) do cur
+    Transaction(d.env; flags = txnflags) do txn
+        Cursor(txn, d.dbi) do cur
             f(cur)
         end
     end
@@ -62,7 +62,7 @@ end
 
 function txn_dbi_do(f, d; readonly = false)
     txnflags = readonly ? Cuint(LMDB.MDB_RDONLY) : Cuint(0)
-    LMDB.start(d.env, flags = txnflags) do txn
+    Transaction(d.env; flags = txnflags) do txn
         f(txn, d.dbi)
     end
 end
@@ -96,8 +96,8 @@ end
 # committed and the cursor closed; on early break/throw, Cursor's and
 # Transaction's finalizers reclaim them.
 function Base.iterate(d::LMDBDict)
-    txn = LMDB.start(d.env; flags = Cuint(MDB_RDONLY))
-    cur = LMDB.open(txn, d.dbi)
+    txn = Transaction(d.env; flags = Cuint(MDB_RDONLY))
+    cur = Cursor(txn, d.dbi)
     return iter_step(d, txn, cur, MDB_FIRST)
 end
 Base.iterate(d::LMDBDict, (txn, cur)::Tuple{Transaction,Cursor}) =
@@ -205,7 +205,7 @@ end
 # `pop!(d)` without a key: pops the first entry, mirroring `Base.pop!(::Dict)`.
 function Base.pop!(d::LMDBDict{K,V}) where {K,V}
     txn_dbi_do(d) do txn, dbi
-        LMDB.open(txn, dbi) do cur
+        Cursor(txn, dbi) do cur
             LMDB.seek!(cur, K) === nothing &&
                 throw(ArgumentError("LMDBDict must be non-empty"))
             pair = LMDB.item(cur, K, V)
@@ -267,7 +267,7 @@ end
 function Base.filter!(f, d::LMDBDict{K,V}) where {K,V}
     txn_dbi_do(d) do txn, dbi
         to_delete = K[]
-        LMDB.open(txn, dbi) do cur
+        Cursor(txn, dbi) do cur
             LMDB.walk(cur, K, V) do k, v
                 f(k => v) || push!(to_delete, k)
             end

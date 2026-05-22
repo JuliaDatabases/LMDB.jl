@@ -13,14 +13,11 @@ cursor lives inside one env.
 ```@docs
 Environment
 Environment(::AbstractString)
-create
-environment
 ```
 
 ## Lifecycle
 
 ```@docs
-Base.open(::Environment, ::String)
 Base.close(::Environment)
 Base.isopen(::Environment)
 sync
