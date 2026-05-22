@@ -15,20 +15,6 @@ against `LMDB.MDB_*` constants directly.
 LMDBError
 ```
 
-## Status-code matchers
-
-```@docs
-is_notfound
-is_keyexist
-is_map_full
-```
-
-## Error helpers
-
-```@docs
-errormsg
-```
-
 ## Status constants
 
 The full set of LMDB status codes is exposed as `LMDB.MDB_*`. The

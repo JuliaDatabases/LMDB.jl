@@ -243,7 +243,7 @@ Statistics for the env's main DB. See `stat(txn, dbi)` for the field layout.
 function stat(env::Environment)
     s_ref = Ref{MDB_stat}()
     mdb_env_stat(env, s_ref)
-    return _stat_namedtuple(s_ref[])
+    return stat_namedtuple(s_ref[])
 end
 
 """
@@ -300,7 +300,7 @@ end
 
 # Callback for `mdb_reader_list`: appends the message to the IOBuffer
 # referenced through `ctx`. Returns 0 to continue, non-zero to stop.
-function _reader_list_cb(msg::Ptr{Cchar}, ctx::Ptr{Cvoid})::Cint
+function reader_list_cb(msg::Ptr{Cchar}, ctx::Ptr{Cvoid})::Cint
     io = unsafe_pointer_to_objref(ctx)::IOBuffer
     write(io, unsafe_string(msg))
     return Cint(0)
@@ -317,7 +317,7 @@ Wraps `mdb_reader_list`.
 """
 function reader_list(env::Environment)
     io = IOBuffer()
-    cb = @cfunction(_reader_list_cb, Cint, (Ptr{Cchar}, Ptr{Cvoid}))
+    cb = @cfunction(reader_list_cb, Cint, (Ptr{Cchar}, Ptr{Cvoid}))
     GC.@preserve io begin
         mdb_reader_list(env, cb, pointer_from_objref(io))
     end

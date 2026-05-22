@@ -165,4 +165,4 @@ mktempdir() do dir
     end
 end
 
-end  # @testset "Cursor"
+end
