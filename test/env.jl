@@ -80,19 +80,17 @@ mktempdir() do dir
     @test_throws LMDBError Environment(joinpath(dir, "definitely_does_not_exist"))
 end
 
-# Finalizers: an abandoned write txn must be aborted by GC so a later
-# write txn doesn't block on LMDB's exclusive write mutex. If the
-# finalizer doesn't fire, `start(env)` below would deadlock.
+# Finalizing an abandoned write txn must abort it; otherwise the next
+# write txn deadlocks on LMDB's exclusive write mutex. We call `finalize`
+# directly because on Julia 1.10+ `GC.gc()` may defer finalizers to a
+# separate task, so it isn't a reliable trigger from a test.
 mktempdir() do dir
     env = Environment(dir)
     try
-        # Open a write txn and let it become unreachable without commit/abort.
-        let txn = start(env)
-            @test isopen(txn)
-        end
-        GC.gc(); GC.gc()
-        # If the finalizer aborted the abandoned txn, this succeeds.
-        txn2 = start(env)
+        txn = start(env)
+        @test isopen(txn)
+        finalize(txn)
+        txn2 = start(env)  # deadlocks here if the finalizer didn't abort txn
         try
             dbi = open(txn2)
             LMDB.put!(txn2, dbi, "k", "v")
@@ -112,10 +110,9 @@ mktempdir() do dir
     try
         start(env) do txn
             dbi = open(txn)
-            let cur = LMDB.open(txn, dbi)
-                @test isopen(cur)
-            end  # cur out of scope
-            GC.gc(); GC.gc()
+            cur = LMDB.open(txn, dbi)
+            @test isopen(cur)
+            finalize(cur)
             # If the finalizer ran, we can still use the txn.
             LMDB.put!(txn, dbi, "k", "v")
         end
@@ -138,11 +135,21 @@ mktempdir() do dir
         LMDB.put!(txn, dbi, "k", "v")
         commit(txn)             # invalidates write-txn cursors
         @test !isopen(txn)
-        cur = nothing           # drop the binding
-        GC.gc(); GC.gc()        # finalizer should be a no-op
+        finalize(cur)           # finalizer should be a safe no-op
     finally
         close(env)
     end
+end
+
+# Symmetric case for the Transaction finalizer: `mdb_env_close` frees the
+# txn memory, so a later `mdb_txn_abort` would dereference a dangling
+# handle. The finalizer must skip the C call when the env is already closed.
+mktempdir() do dir
+    env = Environment(dir)
+    txn = start(env)
+    @test isopen(txn)
+    close(env)
+    finalize(txn)               # finalizer should be a safe no-op
 end
 
 # Parent refs: env(txn) and transaction(cur) return the actual parents.
