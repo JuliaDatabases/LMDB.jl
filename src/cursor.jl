@@ -80,38 +80,27 @@ Base.show(io::IO, cur::Cursor) =
     print(io, "Cursor(", isopen(cur) ? "open" : "closed", ")")
 
 
-# Populate `key_ref` with `searchkey`'s data. Returns the heap-rooted argument
-# that the caller must keep alive across the surrounding ccall (use
-# `GC.@preserve`); the pointer baked into `key_ref` aliases its data.
-@inline function setup_key!(key_ref, k::String)
-    key_ref[] = MDB_val(Csize_t(sizeof(k)),
-                         Ptr{Cvoid}(Base.unsafe_convert(Ptr{UInt8}, k)))
-    return k
-end
-@inline function setup_key!(key_ref, k::AbstractArray{T}) where {T}
-    key_ref[] = MDB_val(Csize_t(sizeof(T) * length(k)),
-                         Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, k)))
-    return k
-end
-@inline function setup_key!(key_ref, k::Base.RefValue{T}) where {T}
-    key_ref[] = MDB_val(Csize_t(sizeof(T)),
-                         Ptr{Cvoid}(Base.unsafe_convert(Ptr{T}, k)))
-    return k
-end
-@inline function setup_key!(key_ref, k::T) where T
-    isbitstype(T) || throw(MethodError(setup_key!, (key_ref, k)))
-    return setup_key!(key_ref, Ref(k))
+# Fill `dst` with the MDB_val that the cconvert/unsafe_convert ladder
+# in `common.jl` would build for `k`. `k`'s storage must outlive the
+# eventual ccall (use `GC.@preserve`); the pointer baked into `dst`
+# aliases its data.
+@inline function fill_mdbval!(dst::Ref{MDB_val}, k)
+    arg = Base.cconvert(Ptr{MDB_val}, k)
+    dst[] = unsafe_load(Base.unsafe_convert(Ptr{MDB_val}, arg))
+    return arg
 end
 
 # Position the cursor with `op`. Returns `true` on success, `false` on
-# `MDB_NOTFOUND`. Throws on other errors.
+# `MDB_NOTFOUND`. Throws on other errors. `key_ref` is used both to feed
+# the search key in (for SET_KEY / SET_RANGE) and to receive the matched
+# key on the way out.
 @inline function cursor_seek!(cur::Cursor, key_ref::Ref{MDB_val},
                                val_ref::Ref{MDB_val}, op::MDB_cursor_op,
                                searchkey)
     if searchkey === nothing
         ret = unchecked_mdb_cursor_get(cur, key_ref, val_ref, op)
     else
-        held = setup_key!(key_ref, searchkey)
+        held = fill_mdbval!(key_ref, searchkey)
         ret = GC.@preserve held unchecked_mdb_cursor_get(cur, key_ref, val_ref, op)
     end
     ret == MDB_NOTFOUND && return false
@@ -338,7 +327,7 @@ function walk(f, cur::Cursor; from = nothing)
     if from === nothing
         ret = unchecked_mdb_cursor_get(cur, key_ref, val_ref, MDB_FIRST)
     else
-        held = setup_key!(key_ref, from)
+        held = fill_mdbval!(key_ref, from)
         ret = GC.@preserve held unchecked_mdb_cursor_get(cur, key_ref, val_ref,
                                                           MDB_SET_RANGE)
     end
