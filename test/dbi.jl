@@ -159,4 +159,29 @@ mktempdir() do dir
     end
 end
 
+# Non-Array AbstractArray inputs (e.g. `ReinterpretArray`, contiguous
+# `SubArray`) flow through `cconvert(Ptr{MDB_val}, ::AbstractArray)`.
+mktempdir() do dir
+    environment(dir) do env
+        start(env) do txn
+            open(txn) do dbi
+                # ReinterpretArray view onto a backing UInt64 vector.
+                ra_key = reinterpret(UInt8, UInt64[0xdeadbeefcafef00d])
+                @test !(ra_key isa Array)
+                LMDB.put!(txn, dbi, ra_key, "v-reinterpret")
+                @test LMDB.tryget(txn, dbi, ra_key, String) == "v-reinterpret"
+                @test LMDB.tryget(txn, dbi, collect(ra_key), String) == "v-reinterpret"
+
+                # Contiguous SubArray.
+                backing = collect(0x01:0x10)
+                sv_key = view(backing, 4:8)
+                @test !(sv_key isa Array)
+                LMDB.put!(txn, dbi, sv_key, "v-subarray")
+                @test LMDB.tryget(txn, dbi, sv_key, String) == "v-subarray"
+                @test LMDB.tryget(txn, dbi, collect(sv_key), String) == "v-subarray"
+            end
+        end
+    end
+end
+
 end  # @testset "DBI"
