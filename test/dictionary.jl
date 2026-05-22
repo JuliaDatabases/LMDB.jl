@@ -54,25 +54,31 @@ mktempdir() do dir
     close(d)
 end
 
-# empty/copy/merge/filter all fall back to in-memory Dict because an
-# LMDBDict can't be constructed without a path.
+# `empty`/`copy` refuse to fabricate a path-less LMDBDict; users reach
+# for `Dict(d)` to get an in-memory snapshot, or `copy(d.env, path)` to
+# clone on disk. `filter` goes through `empty(d)` so it throws as well.
+# `merge` builds a fresh `Dict{K,V}(d)` via iteration, so it works and
+# returns a regular Dict — the same shape the user would get from
+# `Dict(d)` themselves.
 mktempdir() do dir
     d = LMDBDict{String, Int}(dir)
     d["a"] = 1; d["b"] = 2; d["c"] = 3
 
-    @test empty(d) isa Dict{String, Int}
-    @test isempty(empty(d))
-    @test empty(d, Int64, Float32) isa Dict{Int64, Float32}
+    @test_throws ArgumentError empty(d)
+    @test_throws ArgumentError empty(d, Int64, Float32)
+    @test_throws ArgumentError copy(d)
+    @test_throws ArgumentError filter(p -> isodd(p.second), d)
 
-    cp = copy(d)
-    @test cp isa Dict{String, Int}
-    @test cp == Dict("a" => 1, "b" => 2, "c" => 3)
+    # Canonical in-memory snapshot: the AbstractDict constructor on Dict.
+    snap = Dict(d)
+    @test snap isa Dict{String, Int}
+    @test snap == Dict("a" => 1, "b" => 2, "c" => 3)
 
-    @test filter(p -> isodd(p.second), d) isa Dict{String, Int}
-    @test filter(p -> isodd(p.second), d) == Dict("a" => 1, "c" => 3)
+    # `merge` builds a Dict via iteration, no empty(d) involved.
+    merged = merge(d, Dict("b" => 20, "d" => 40))
+    @test merged isa Dict{String, Int}
+    @test merged == Dict("a" => 1, "b" => 20, "c" => 3, "d" => 40)
 
-    @test merge(d, Dict("b" => 20, "d" => 40)) == Dict("a" => 1, "b" => 20,
-                                                       "c" => 3, "d" => 40)
     close(d)
 end
 

@@ -226,17 +226,16 @@ end
 # `==`, `hash`, `in(::Pair, d)` etc. all kick in for free now that
 # `iterate` and `length` are defined.
 
-"""
-    empty(d::LMDBDict[, K, V]) -> Dict{K,V}
-
-A fresh, in-memory `Dict{K,V}`. LMDBDict can't construct a new on-disk
-container without a path, so the canonical `empty` form falls back to
-the in-memory dict type. This in turn drives the default `copy`,
-`filter`, `merge`, and similar Base routines to return `Dict` rather
-than `LMDBDict`. Use `Dict(d)` to materialize the whole thing in
-memory, or `copy(env, path)` for an on-disk clone.
-"""
-Base.empty(::LMDBDict, ::Type{K}, ::Type{V}) where {K,V} = Dict{K,V}()
+# An LMDBDict needs an on-disk directory to live in, so there's no
+# meaningful zero-argument `empty(d)` (or `copy(d)`, which `Base`
+# implements as `merge!(empty(d), d)`). Refuse with an explicit error
+# so users reach for `Dict(d)` for an in-memory snapshot or
+# `copy(d.env, path)` for an on-disk clone.
+const _NO_EMPTY_LMDBDICT =
+    "LMDBDict has no path-less empty form; use Dict(d) for an in-memory " *
+    "snapshot, or copy(d.env, path) for an on-disk clone"
+Base.empty(::LMDBDict, ::Type, ::Type) = throw(ArgumentError(_NO_EMPTY_LMDBDICT))
+Base.copy(::LMDBDict) = throw(ArgumentError(_NO_EMPTY_LMDBDICT))
 
 # Override the bulk-update fallbacks so they land in a single LMDB write
 # txn. AbstractDict's default `merge!` / `mergewith!` / `filter!` call
