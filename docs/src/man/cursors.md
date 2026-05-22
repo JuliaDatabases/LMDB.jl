@@ -11,7 +11,7 @@ scans, range queries, or to amortise the per-lookup overhead of
 ## Opening a cursor
 
 ```julia
-start(env; flags = MDB_RDONLY) do txn
+start(env; flags = LMDB.MDB_RDONLY) do txn
     open(txn) do dbi
         open(txn, dbi) do cur
             # use cur
@@ -48,16 +48,16 @@ seek_range!(cur, "users/", String)
 ## Reading at the current position
 
 ```julia
-key(cur, K)                   # current key, decoded as K
-value(cur, V)                 # current value, decoded as V
-item(cur, K, V)               # Pair{K, V}
+LMDB.key(cur, K)              # current key, decoded as K
+LMDB.value(cur, V)            # current value, decoded as V
+LMDB.item(cur, K, V)          # Pair{K, V}
 ```
 
 The defaults are `K = V = Vector{UInt8}`.
 
 ```julia
 seek_range!(cur, "users/", String) === nothing && return
-@show key(cur, String), value(cur, String)
+@show LMDB.key(cur, String), LMDB.value(cur, String)
 ```
 
 ## Range scans
@@ -66,12 +66,12 @@ A typical pattern for "all keys with a given prefix":
 
 ```julia
 prefix = "users/"
-start(env; flags = MDB_RDONLY) do txn
+start(env; flags = LMDB.MDB_RDONLY) do txn
     open(txn) do dbi
         open(txn, dbi) do cur
             k = seek_range!(cur, prefix, String)
             while k !== nothing && startswith(k, prefix)
-                v = value(cur, String)
+                v = LMDB.value(cur, String)
                 handle(k, v)
                 k = next!(cur, String)
             end
@@ -124,9 +124,9 @@ position:
 
 ```julia
 put!(cur, key, val)
-put!(cur, key, val; flags = MDB_NOOVERWRITE)
+put!(cur, key, val; flags = LMDB.MDB_NOOVERWRITE)
 delete!(cur)
-delete!(cur; flags = MDB_NODUPDATA)
+delete!(cur; flags = LMDB.MDB_NODUPDATA)
 ```
 
 `count(cur)` returns the number of duplicate values for the current
@@ -174,7 +174,7 @@ expensive. Park the txn with [`reset`](@ref Base.reset(::LMDB.Transaction))
 and refresh both the txn and the cursor with `renew(txn, cur)`:
 
 ```julia
-txn = start(env; flags = MDB_RDONLY)
+txn = start(env; flags = LMDB.MDB_RDONLY)
 cur = open(txn, dbi)
 while running
     ...                # use cur

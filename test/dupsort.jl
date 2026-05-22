@@ -1,6 +1,3 @@
-using LMDB
-using Test
-
 @testset "DupSort" begin
 
 # DupSort: a single key can hold multiple sorted values. Verify the
@@ -9,7 +6,7 @@ using Test
 mktempdir() do dir
     environment(dir) do env
         start(env) do txn
-            open(txn, flags = MDB_DUPSORT) do dbi
+            open(txn, flags = LMDB.MDB_DUPSORT) do dbi
                 LMDB.put!(txn, dbi, "k1", "a")
                 LMDB.put!(txn, dbi, "k1", "b")
                 LMDB.put!(txn, dbi, "k1", "c")

@@ -1,3 +1,6 @@
+export Transaction, start, abort, commit, renew
+@public env
+
 """
 A database transaction. Every database operation requires a transaction.
 Transactions may be read-only or read-write.

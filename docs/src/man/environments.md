@@ -17,7 +17,7 @@ and `open`s the directory in one go:
 env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
                                maxreaders = 510,
                                maxdbs     = 8,
-                               flags      = MDB_NOTLS)
+                               flags      = LMDB.MDB_NOTLS)
 ```
 
 If anything fails between `create` and a successful `open`, the
@@ -30,7 +30,7 @@ env = create()
 env[:MapSize] = 1 << 30
 env[:Readers] = 510
 env[:DBs]     = 8
-open(env, "/tmp/mydb"; flags = MDB_NOTLS)
+open(env, "/tmp/mydb"; flags = LMDB.MDB_NOTLS)
 ```
 
 The `[:Flags]`/`[:Readers]`/`[:MapSize]`/`[:DBs]` keys map directly to
@@ -46,7 +46,7 @@ The do-block constructor `environment(f, path; flags, mode)` opens the
 env, calls `f(env)`, and closes the env on the way out:
 
 ```julia
-environment("/tmp/mydb"; flags = MDB_NOTLS) do env
+environment("/tmp/mydb"; flags = LMDB.MDB_NOTLS) do env
     # use env
 end
 ```
@@ -68,7 +68,7 @@ end
 | `MDB_NOLOCK`     | the caller takes responsibility for locking |
 
 `MDB_RDONLY` can only be set at `open` time. Calling `set!(env,
-MDB_RDONLY)` on an open env will return `EINVAL`.
+LMDB.MDB_RDONLY)` on an open env will return `EINVAL`.
 
 ## Sizing the map
 

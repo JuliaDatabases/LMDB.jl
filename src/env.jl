@@ -1,3 +1,8 @@
+export Environment, create, environment,
+       sync, set!, unset!, info,
+       reader_check, reader_list
+@public path
+
 """
 A DB environment supports multiple databases, all residing in the same shared-memory map.
 

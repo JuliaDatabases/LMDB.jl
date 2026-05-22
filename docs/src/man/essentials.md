@@ -84,7 +84,7 @@ when GC runs.
 The do-block constructors are usually what you want:
 
 ```julia
-environment("/tmp/mydb"; flags = MDB_NOTLS) do env
+environment("/tmp/mydb"; flags = LMDB.MDB_NOTLS) do env
     start(env) do txn
         open(txn) do dbi
             put!(txn, dbi, "k", "v")

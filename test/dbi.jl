@@ -1,6 +1,3 @@
-using LMDB
-using Test
-
 # Fixtures for the typed-read extension-point tests below. Defined at
 # module scope because `const` and `struct` aren't allowed inside a
 # `@testset` block.

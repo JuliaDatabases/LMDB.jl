@@ -1,6 +1,3 @@
-using LMDB
-using Test
-
 @testset "Cursor" begin
 
 key = 10
@@ -42,8 +39,8 @@ mktempdir() do dbname
         start(env) do txn
             open(txn) do dbi
                 open(txn, dbi) do cur
-                    @test transaction(cur) === txn
-                    @test database(cur) === dbi
+                    @test LMDB.transaction(cur) === txn
+                    @test LMDB.database(cur) === dbi
                     @test LMDB.seek!(cur, key, typeof(key)) == key
                     v = LMDB.value(cur, String)
                     @test val*string(key) == v

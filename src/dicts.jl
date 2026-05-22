@@ -1,3 +1,6 @@
+export LMDBDict
+@public scan, scan_keys, scan_values, list_dirs, valuesize
+
 """
     LMDBDict{K,V}(path; readonly, rdahead, mapsize, readers, dbs)
 

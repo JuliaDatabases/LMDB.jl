@@ -1,5 +1,3 @@
-using Test, LMDB
-
 @testset "Dictionary-like interface" begin
 
     # Basic round-trip with String keys, Float64 values.
