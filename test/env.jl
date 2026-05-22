@@ -141,15 +141,26 @@ mktempdir() do dir
     end
 end
 
-# Symmetric case for the Transaction finalizer: `mdb_env_close` frees the
-# txn memory, so a later `mdb_txn_abort` would dereference a dangling
-# handle. The finalizer must skip the C call when the env is already closed.
+# close(env) must abort any still-open child txns before calling
+# `mdb_env_close`; otherwise LMDB corrupts shared state and a later
+# env-open in the same process crashes inside `mdb_txn_renew0`. The
+# subsequent Environment is the canary.
 mktempdir() do dir
     env = Environment(dir)
     txn = start(env)
     @test isopen(txn)
+    close(env)                  # would corrupt LMDB state without txn tracking
+    @test !isopen(txn)
+    finalize(txn)               # finalizer should also be a safe no-op
+end
+mktempdir() do dir
+    env = Environment(dir; mapsize = Csize_t(8) * 1024^3, maxreaders = 42, maxdbs = 4)
+    start(env) do txn
+        open(txn) do dbi
+            LMDB.put!(txn, dbi, "k", "v")
+        end
+    end
     close(env)
-    finalize(txn)               # finalizer should be a safe no-op
 end
 
 # Parent refs: env(txn) and transaction(cur) return the actual parents.

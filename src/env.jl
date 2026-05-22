@@ -8,8 +8,12 @@ handle: it will be closed when the wrapper is garbage-collected, unless
 mutable struct Environment
     handle::Ptr{MDB_env}
     path::String
+    # Live transactions, tracked weakly so they remain GC-able. `close`
+    # walks this list to abort any still-open txn before calling
+    # `mdb_env_close`; otherwise LMDB corrupts state shared across envs.
+    txns::Vector{WeakRef}
     function Environment(h::Ptr{MDB_env} = C_NULL)
-        e = new(h, "")
+        e = new(h, "", WeakRef[])
         finalizer(close, e)
         return e
     end
@@ -105,6 +109,14 @@ finalizers safe to run after an explicit close.
 """
 function close(env::Environment)
     env.handle == C_NULL && return zero(Cint)
+    # LMDB requires all transactions to be closed before `mdb_env_close`;
+    # otherwise it leaves shared lockfile/heap state corrupted and the
+    # next env-open in the process can crash inside `mdb_txn_renew0`.
+    for wr in env.txns
+        t = wr.value
+        t isa Transaction && t.handle != C_NULL && abort(t)
+    end
+    empty!(env.txns)
     mdb_env_close(env)
     env.handle = C_NULL
     env.path = ""

@@ -12,6 +12,8 @@ mutable struct Transaction
     env::Environment
     function Transaction(env::Environment, h::Ptr{MDB_txn})
         t = new(h, env)
+        # Track on the env so `close(env)` can abort us if the caller forgot.
+        push!(env.txns, WeakRef(t))
         finalizer(_finalize_txn, t)
         return t
     end
