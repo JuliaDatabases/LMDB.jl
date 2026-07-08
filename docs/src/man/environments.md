@@ -15,6 +15,7 @@ the handle, set mapsize/maxreaders/maxdbs/flags, open the directory:
 
 ```julia
 env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
+                               pagesize   = 8192,
                                maxreaders = 510,
                                maxdbs     = 8,
                                flags      = LMDB.MDB_NOTLS)
@@ -23,14 +24,15 @@ env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
 If anything fails on the way through, the half-open env is closed
 before the exception propagates.
 
-After the env is open, `[:Flags]` / `[:Readers]` / `[:MapSize]` /
-`[:DBs]` setindex! keys map to `mdb_env_set_flags` /
-`mdb_env_set_maxreaders` / `mdb_env_set_mapsize` / `mdb_env_set_maxdbs`,
-and `set!` / `unset!` flip individual flag bits.
+Before the env is open, `pagesize` maps to `mdb_env_set_pagesize`.
+The `[:Flags]` / `[:Readers]` / `[:MapSize]` / `[:PageSize]` / `[:DBs]`
+setindex! keys map to `mdb_env_set_flags` / `mdb_env_set_maxreaders` /
+`mdb_env_set_mapsize` / `mdb_env_set_pagesize` / `mdb_env_set_maxdbs`,
+and `set!` / `unset!` flip individual flag bits after open.
 
 `getindex` exposes a few read-only views: `env[:Flags]`,
-`env[:Readers]`, and `env[:KeySize]` (the maximum key length, fixed at
-compile time of the bundled `LMDB_jll`).
+`env[:Readers]`, and `env[:KeySize]` (the maximum key length for the
+environment's configured page size).
 
 The do-block form `Environment(f, path; kwargs...)` opens the env,
 calls `f(env)`, and closes on the way out:
@@ -65,6 +67,12 @@ LMDB.MDB_RDONLY)` on an open env will return `EINVAL`.
 `mapsize` is a *virtual* limit on the env's address space, not the
 on-disk size. Pick a generous power of two (say, 1 GiB or 8 GiB) up
 front. The on-disk file grows incrementally as data is written.
+
+LMDB 1.0 also lets you choose the DB page size with `pagesize`. The
+default is the OS page size; larger values can allow larger keys and
+`MDB_DUPSORT` data items. After opening, `stat(env).psize` reports the
+actual page size and `env[:KeySize]` reports the corresponding maximum
+key size.
 
 If a write txn would exceed `mapsize`, LMDB returns `MDB_MAP_FULL`. To
 recover, close the env, raise `mapsize`, and reopen. The database

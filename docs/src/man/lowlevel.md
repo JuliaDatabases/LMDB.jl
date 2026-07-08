@@ -39,9 +39,11 @@ This is exactly the pattern `get(txn, dbi, key, T, default)` uses internally.
 
 Bindings that don't return a status (`mdb_strerror`, `mdb_version`,
 `mdb_txn_id`, `mdb_cmp`, `mdb_dcmp`, `mdb_env_get_maxkeysize`,
-`mdb_cursor_txn`, `mdb_cursor_dbi`) and `Cvoid`-returning ones
+`mdb_cursor_txn`, `mdb_cursor_dbi`, `mdb_cursor_is_db`, `mdb_modload`)
+and `Cvoid`-returning ones
 (`mdb_env_close`, `mdb_dbi_close`, `mdb_txn_abort`, `mdb_txn_reset`,
-`mdb_cursor_close`) are left bare; there is nothing to check.
+`mdb_cursor_close`, `mdb_modunload`, `mdb_modsetup`) are left bare;
+there is nothing to check.
 
 ## ccall glue: passing values to `Ptr{MDB_val}`
 
@@ -148,3 +150,8 @@ Julia wrappers deliberately don't include them:
 - `MDB_GET_MULTIPLE` / `MDB_NEXT_MULTIPLE` cursor ops: reachable by
   passing the constant directly to `LMDB.mdb_cursor_get`. Useful with
   `MDB_DUPFIXED` databases for batched reads.
+- LMDB 1.0 incremental backup, encryption/checksum hooks, and
+  two-phase-commit helpers are exposed as raw bindings:
+  `mdb_env_incr_dump`, `mdb_env_incr_dumpfd`, `mdb_env_incr_loadfd`,
+  `mdb_env_set_encrypt`, `mdb_env_set_checksum`, `mdb_txn_prepare`,
+  and `mdb_env_rollback`.

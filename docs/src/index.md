@@ -7,6 +7,10 @@ LMDB is an embedded, memory-mapped, ACID key-value store developed by
 Symas for OpenLDAP. It persists to disk while reading at near in-memory
 speeds, limited only by the size of the virtual address space.
 
+LMDB 1.0 changed the on-disk file format. Databases created by LMDB 0.9
+must be exported with a 0.9 `mdb_dump` and imported with a 1.0
+`mdb_load`; LMDB 1.0 does not open 0.9 database files directly.
+
 ```julia
 using Pkg; Pkg.add("LMDB")
 ```

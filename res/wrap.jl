@@ -16,6 +16,7 @@ const UNCHECKED_CINT = (
     "mdb_env_get_maxkeysize",  # returns the maximum key size, not a status.
     "mdb_cmp",                  # returns the comparison result (-1/0/1).
     "mdb_dcmp",                 # idem for dup-data.
+    "mdb_cursor_is_db",         # returns a boolean int.
 )
 
 # Replace `function $name(args)\n    @ccall ...::Cint\nend` with
@@ -42,6 +43,8 @@ function postprocess!(path::AbstractString)
     end
     write(out, SubString(src, last, lastindex(src)))
     src = String(take!(out))
+    src = replace(src, r"^const MDB_SIZE_MAX = SIZE_MAX$"m =>
+                       "const MDB_SIZE_MAX = typemax(mdb_size_t)")
     # Clang.Generators always emits `export $jll_pkg_name` next to its
     # `using` line; strip it so LMDB_jll stays an implementation detail.
     src = replace(src, r"^export LMDB_jll\n"m => "")

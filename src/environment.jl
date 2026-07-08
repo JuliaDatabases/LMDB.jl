@@ -25,19 +25,22 @@ path(env::Environment) = env.path
 isopen(env::Environment) = env.handle != C_NULL
 
 """
-    Environment(path::AbstractString; mapsize=nothing, maxreaders=nothing,
-                maxdbs=nothing, flags=0, mode=0o755) -> Environment
+    Environment(path::AbstractString; mapsize=nothing, pagesize=nothing,
+                maxreaders=nothing, maxdbs=nothing, flags=0,
+                mode=0o755) -> Environment
 
 Open the LMDB environment at `path`. The directory must already exist
 and be writable. The configuration kwargs go through
-`mdb_env_set_mapsize`, `mdb_env_set_maxreaders`, and `mdb_env_set_maxdbs`;
-`flags` is forwarded to `mdb_env_open`. If anything fails along the
-way, the partially-built env is closed before rethrowing.
+`mdb_env_set_mapsize`, `mdb_env_set_pagesize`,
+`mdb_env_set_maxreaders`, and `mdb_env_set_maxdbs`; `flags` is
+forwarded to `mdb_env_open`. If anything fails along the way, the
+partially-built env is closed before rethrowing.
 
 Matches py-lmdb's `Environment(path, **kwargs)` and lmdb-rs's
 `EnvironmentBuilder.open(path)`.
 """
 function Environment(path::AbstractString; mapsize::Union{Integer,Nothing} = nothing,
+                     pagesize::Union{Integer,Nothing} = nothing,
                      maxreaders::Union{Integer,Nothing} = nothing,
                      maxdbs::Union{Integer,Nothing} = nothing,
                      flags::Integer = zero(Cuint),
@@ -47,6 +50,7 @@ function Environment(path::AbstractString; mapsize::Union{Integer,Nothing} = not
     env = Environment(env_ref[], "", WeakRef[])
     finalizer(close, env)
     try
+        pagesize   === nothing || (env[:PageSize] = pagesize)
         mapsize    === nothing || (env[:MapSize] = mapsize)
         maxreaders === nothing || (env[:Readers] = maxreaders)
         maxdbs     === nothing || (env[:DBs]     = maxdbs)
@@ -124,6 +128,7 @@ end
     * Flags
     * Readers
     * MapSize
+    * PageSize
     * DBs
 * `value` parameter value
 
@@ -137,11 +142,13 @@ function setindex!(env::Environment, val::Integer, option::Symbol)
     elseif option == :MapSize
         # MDB_env_set_mapsize takes a size_t; using Cuint truncates >4 GiB
         # maps on 64-bit platforms (issue #38, PRs #37 / #40).
-        mdb_env_set_mapsize(env, Csize_t(val))
+        mdb_env_set_mapsize(env, mdb_size_t(val))
+    elseif option == :PageSize
+        mdb_env_set_pagesize(env, Cint(val))
     elseif option == :DBs
         mdb_env_set_maxdbs(env, Cuint(val))
     else
-        throw(ArgumentError("Unsupported environment option :$option (supported: :Flags, :Readers, :MapSize, :DBs)"))
+        throw(ArgumentError("Unsupported environment option :$option (supported: :Flags, :Readers, :MapSize, :PageSize, :DBs)"))
     end
 end
 

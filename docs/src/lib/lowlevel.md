@@ -32,10 +32,12 @@ ret == 0 || throw(LMDB.LMDBError(ret))
 
 Bindings that return non-status data (`mdb_strerror`, `mdb_version`,
 `mdb_txn_id`, `mdb_cmp`, `mdb_dcmp`, `mdb_env_get_maxkeysize`,
-`mdb_env_get_userctx`, `mdb_cursor_txn`, `mdb_cursor_dbi`) and
+`mdb_env_get_userctx`, `mdb_cursor_txn`, `mdb_cursor_dbi`,
+`mdb_cursor_is_db`, `mdb_modload`) and
 `Cvoid`-returning ones (`mdb_env_close`, `mdb_dbi_close`,
-`mdb_txn_abort`, `mdb_txn_reset`, `mdb_cursor_close`) are left bare,
-since there is nothing to check.
+`mdb_txn_abort`, `mdb_txn_reset`, `mdb_cursor_close`,
+`mdb_modunload`, `mdb_modsetup`) are left bare, since there is
+nothing to check.
 
 ## Customisation point: `MDBValueIO`
 
@@ -69,10 +71,12 @@ LMDB.MDB_env       # opaque
 LMDB.MDB_txn       # opaque
 LMDB.MDB_cursor    # opaque
 LMDB.MDB_dbi       # = Cuint
+LMDB.mdb_size_t    # mapsize/page/transaction id integer type
 LMDB.MDB_val       # struct { mv_size::Csize_t; mv_data::Ptr{Cvoid} }
 LMDB.MDB_stat      # struct (page sizes, depth, leaf/branch/overflow page counts, entries)
 LMDB.MDB_envinfo   # struct (mapaddr, mapsize, last_pgno, last_txnid, maxreaders, numreaders)
 LMDB.MDB_cursor_op # @cenum: MDB_FIRST … MDB_PREV_MULTIPLE (19 variants)
+LMDB.MDB_crypto_funcs
 ```
 
 ### Environment
@@ -83,16 +87,19 @@ mdb_env_open
 mdb_env_close
 mdb_env_copy        mdb_env_copy2
 mdb_env_copyfd      mdb_env_copyfd2
+mdb_env_incr_dump   mdb_env_incr_dumpfd   mdb_env_incr_loadfd
 mdb_env_stat        mdb_env_info
 mdb_env_sync
 mdb_env_set_flags   mdb_env_get_flags
 mdb_env_get_path    mdb_env_get_fd
-mdb_env_set_mapsize
+mdb_env_set_mapsize mdb_env_set_pagesize
 mdb_env_set_maxreaders   mdb_env_get_maxreaders
 mdb_env_set_maxdbs
 mdb_env_get_maxkeysize
 mdb_env_set_userctx      mdb_env_get_userctx
 mdb_env_set_assert
+mdb_env_set_encrypt      mdb_env_set_checksum
+mdb_env_rollback
 ```
 
 ### Transaction
@@ -101,7 +108,9 @@ mdb_env_set_assert
 mdb_txn_begin
 mdb_txn_env
 mdb_txn_id
+mdb_txn_flags
 mdb_txn_commit
+mdb_txn_prepare
 mdb_txn_abort
 mdb_txn_reset
 mdb_txn_renew
@@ -135,18 +144,20 @@ mdb_cursor_close
 mdb_cursor_renew
 mdb_cursor_txn
 mdb_cursor_dbi
+mdb_cursor_is_db
 mdb_cursor_get
 mdb_cursor_put
 mdb_cursor_del
 mdb_cursor_count
 ```
 
-### Comparators / readers / version
+### Comparators / readers / crypto modules / version
 
 ```julia
 mdb_cmp     mdb_dcmp
 mdb_reader_list
 mdb_reader_check
+mdb_modload mdb_modunload mdb_modsetup
 mdb_version
 mdb_strerror
 ```
@@ -155,8 +166,8 @@ mdb_strerror
 
 | group | constants |
 |------|-----------|
-| Env flags | `MDB_FIXEDMAP`, `MDB_NOSUBDIR`, `MDB_NOSYNC`, `MDB_RDONLY`, `MDB_NOMETASYNC`, `MDB_WRITEMAP`, `MDB_MAPASYNC`, `MDB_NOTLS`, `MDB_NOLOCK`, `MDB_NORDAHEAD`, `MDB_NOMEMINIT` |
+| Env flags | `MDB_FIXEDMAP`, `MDB_ENCRYPT`, `MDB_NOSUBDIR`, `MDB_NOSYNC`, `MDB_RDONLY`, `MDB_NOMETASYNC`, `MDB_WRITEMAP`, `MDB_MAPASYNC`, `MDB_NOTLS`, `MDB_NOLOCK`, `MDB_NORDAHEAD`, `MDB_NOMEMINIT`, `MDB_PREVSNAPSHOT`, `MDB_REMAP_CHUNKS` |
 | DB flags | `MDB_REVERSEKEY`, `MDB_DUPSORT`, `MDB_INTEGERKEY`, `MDB_DUPFIXED`, `MDB_INTEGERDUP`, `MDB_REVERSEDUP`, `MDB_CREATE` |
 | Write flags | `MDB_NOOVERWRITE`, `MDB_NODUPDATA`, `MDB_CURRENT`, `MDB_RESERVE`, `MDB_APPEND`, `MDB_APPENDDUP`, `MDB_MULTIPLE` |
 | Copy flag | `MDB_CP_COMPACT` |
-| Status codes | `MDB_SUCCESS=0`, `MDB_KEYEXIST`, `MDB_NOTFOUND`, `MDB_PAGE_NOTFOUND`, `MDB_CORRUPTED`, `MDB_PANIC`, `MDB_VERSION_MISMATCH`, `MDB_INVALID`, `MDB_MAP_FULL`, `MDB_DBS_FULL`, `MDB_READERS_FULL`, `MDB_TLS_FULL`, `MDB_TXN_FULL`, `MDB_CURSOR_FULL`, `MDB_PAGE_FULL`, `MDB_MAP_RESIZED`, `MDB_INCOMPATIBLE`, `MDB_BAD_RSLOT`, `MDB_BAD_TXN`, `MDB_BAD_VALSIZE`, `MDB_BAD_DBI` |
+| Status codes | `MDB_SUCCESS=0`, `MDB_KEYEXIST`, `MDB_NOTFOUND`, `MDB_PAGE_NOTFOUND`, `MDB_CORRUPTED`, `MDB_PANIC`, `MDB_VERSION_MISMATCH`, `MDB_INVALID`, `MDB_MAP_FULL`, `MDB_DBS_FULL`, `MDB_READERS_FULL`, `MDB_TLS_FULL`, `MDB_TXN_FULL`, `MDB_CURSOR_FULL`, `MDB_PAGE_FULL`, `MDB_MAP_RESIZED`, `MDB_INCOMPATIBLE`, `MDB_BAD_RSLOT`, `MDB_BAD_TXN`, `MDB_BAD_VALSIZE`, `MDB_BAD_DBI`, `MDB_PROBLEM`, `MDB_BAD_CHECKSUM`, `MDB_CRYPTO_FAIL`, `MDB_ENV_ENCRYPTION`, `MDB_TXN_PENDING`, `MDB_CANT_ROLLBACK`, `MDB_DBIS_BUSY`, `MDB_SHORT_WRITE`, `MDB_ENV_BUSY`, `MDB_IS_READONLY`, `MDB_ADDR_BUSY` |

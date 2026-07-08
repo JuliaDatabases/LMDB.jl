@@ -60,6 +60,7 @@ mktempdir() do dir
 
                 LMDB.Cursor(txn, dbi) do cur
                     @test LMDB.seek!(cur, String) == "a"
+                    @test LMDB.mdb_cursor_is_db(cur) == 0
                     @test LMDB.value(cur, String) == "1"
                     @test LMDB.key(cur, String) == "a"
                     @test LMDB.item(cur, String, String) == ("a" => "1")

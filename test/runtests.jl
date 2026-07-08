@@ -1,7 +1,7 @@
 using Test, LMDB
 
 @testset "LMDB" verbose=true begin
-    @test LMDB.version() >= v"0.9.35"
+    @test LMDB.version() >= v"1.0.0"
 
     # LMDBError
     ex = LMDBError(Cint(0))
