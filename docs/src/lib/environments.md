@@ -27,7 +27,8 @@ path
 ## Configuration
 
 `Environment` exposes its tunables through `getindex` / `setindex!` with
-symbol keys (`:Flags`, `:Readers`, `:MapSize`, `:DBs`, `:KeySize`):
+symbol keys (`:Flags`, `:Readers`, `:MapSize`, `:PageSize`, `:DBs`,
+`:KeySize`):
 
 ```@docs
 Base.setindex!(::Environment, ::Integer, ::Symbol)

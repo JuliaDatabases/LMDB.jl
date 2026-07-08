@@ -6,7 +6,8 @@ mktempdir() do dir
     try
         @test isopen(env)
         @test env[:Readers] == 126
-        @test env[:KeySize] == 511
+        @test env[:KeySize] == LMDB.mdb_env_get_maxkeysize(env)
+        @test env[:KeySize] > 0
         @test env[:Flags] == 0
 
         # Manipulate flags via LMDB.set!/LMDB.unset! after open.
@@ -45,12 +46,14 @@ end
 # High-level LMDB.Environment(path; ...) constructor.
 mktempdir() do dir
     big = Csize_t(8) * 1024^3
-    env = LMDB.Environment(dir; mapsize = big, maxreaders = 42, maxdbs = 4,
+    env = LMDB.Environment(dir; mapsize = big, pagesize = 8192,
+                      maxreaders = 42, maxdbs = 4,
                       flags = LMDB.MDB_NOSYNC | LMDB.MDB_NOTLS)
     try
         @test isopen(env)
         @test env[:Readers] == 42
         @test LMDB.info(env).mapsize == big
+        @test LMDB.stat(env).psize == 8192
         @test LMDB.isflagset(env[:Flags], Cuint(LMDB.MDB_NOSYNC))
         @test LMDB.isflagset(env[:Flags], Cuint(LMDB.MDB_NOTLS))
     finally

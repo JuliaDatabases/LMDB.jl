@@ -12,5 +12,5 @@ LMDB_jll = "6206cf0b-f360-5984-af49-5437264c140e"
 
 [compat]
 CEnum = "0.4, 0.5"
-LMDB_jll = "0.9.35"
+LMDB_jll = "1.0"
 julia = "1.10"

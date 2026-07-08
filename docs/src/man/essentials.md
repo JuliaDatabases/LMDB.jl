@@ -10,8 +10,12 @@ After importing LMDB.jl, you can immediately query the bundled library:
 julia> using LMDB
 
 julia> LMDB.version()
-(v"0.9.33", "LMDB 0.9.33: (May 21, 2024)")
+v"1.0.0"
 ```
+
+LMDB 1.0 changed the on-disk file format. Databases created by LMDB
+0.9 must be exported with a 0.9 `mdb_dump` and imported with a 1.0
+`mdb_load`; LMDB 1.0 does not open 0.9 database files directly.
 
 ## A complete example
 

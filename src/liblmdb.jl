@@ -26,6 +26,8 @@ end
 
 const mdb_mode_t = mode_t
 
+const mdb_size_t = Csize_t
+
 const mdb_filehandle_t = Cint
 
 mutable struct MDB_cursor end
@@ -40,6 +42,12 @@ const MDB_cmp_func = Cvoid
 
 # typedef void ( MDB_rel_func ) ( MDB_val * item , void * oldptr , void * newptr , void * relctx )
 const MDB_rel_func = Cvoid
+
+# typedef int ( MDB_enc_func ) ( const MDB_val * src , MDB_val * dst , const MDB_val * key , int encdec )
+const MDB_enc_func = Cvoid
+
+# typedef void ( MDB_sum_func ) ( const MDB_val * src , MDB_val * dst , const MDB_val * key )
+const MDB_sum_func = Cvoid
 
 @cenum MDB_cursor_op::UInt32 begin
     MDB_FIRST = 0
@@ -66,17 +74,17 @@ end
 struct MDB_stat
     ms_psize::Cuint
     ms_depth::Cuint
-    ms_branch_pages::Csize_t
-    ms_leaf_pages::Csize_t
-    ms_overflow_pages::Csize_t
-    ms_entries::Csize_t
+    ms_branch_pages::mdb_size_t
+    ms_leaf_pages::mdb_size_t
+    ms_overflow_pages::mdb_size_t
+    ms_entries::mdb_size_t
 end
 
 struct MDB_envinfo
     me_mapaddr::Ptr{Cvoid}
-    me_mapsize::Csize_t
-    me_last_pgno::Csize_t
-    me_last_txnid::Csize_t
+    me_mapsize::mdb_size_t
+    me_last_pgno::mdb_size_t
+    me_last_txnid::mdb_size_t
     me_maxreaders::Cuint
     me_numreaders::Cuint
 end
@@ -116,6 +124,19 @@ end
                                    flags::Cuint)::Cint
 end
 
+@checked function mdb_env_incr_dumpfd(env, fd, txnid)
+    @ccall liblmdb.mdb_env_incr_dumpfd(env::Ptr{MDB_env}, fd::mdb_filehandle_t,
+                                       txnid::Csize_t)::Cint
+end
+
+@checked function mdb_env_incr_dump(env, path, txnid)
+    @ccall liblmdb.mdb_env_incr_dump(env::Ptr{MDB_env}, path::Cstring, txnid::Csize_t)::Cint
+end
+
+@checked function mdb_env_incr_loadfd(env, fd)
+    @ccall liblmdb.mdb_env_incr_loadfd(env::Ptr{MDB_env}, fd::mdb_filehandle_t)::Cint
+end
+
 @checked function mdb_env_stat(env, stat)
     @ccall liblmdb.mdb_env_stat(env::Ptr{MDB_env}, stat::Ptr{MDB_stat})::Cint
 end
@@ -149,7 +170,11 @@ end
 end
 
 @checked function mdb_env_set_mapsize(env, size)
-    @ccall liblmdb.mdb_env_set_mapsize(env::Ptr{MDB_env}, size::Csize_t)::Cint
+    @ccall liblmdb.mdb_env_set_mapsize(env::Ptr{MDB_env}, size::mdb_size_t)::Cint
+end
+
+@checked function mdb_env_set_pagesize(env, size)
+    @ccall liblmdb.mdb_env_set_pagesize(env::Ptr{MDB_env}, size::Cint)::Cint
 end
 
 @checked function mdb_env_set_maxreaders(env, readers)
@@ -183,6 +208,16 @@ const MDB_assert_func = Cvoid
     @ccall liblmdb.mdb_env_set_assert(env::Ptr{MDB_env}, func::Ptr{MDB_assert_func})::Cint
 end
 
+@checked function mdb_env_set_encrypt(env, func, key, size)
+    @ccall liblmdb.mdb_env_set_encrypt(env::Ptr{MDB_env}, func::Ptr{MDB_enc_func},
+                                       key::Ptr{MDB_val}, size::Cuint)::Cint
+end
+
+@checked function mdb_env_set_checksum(env, func, size)
+    @ccall liblmdb.mdb_env_set_checksum(env::Ptr{MDB_env}, func::Ptr{MDB_sum_func},
+                                        size::Cuint)::Cint
+end
+
 @checked function mdb_txn_begin(env, parent, flags, txn)
     @ccall liblmdb.mdb_txn_begin(env::Ptr{MDB_env}, parent::Ptr{MDB_txn}, flags::Cuint,
                                  txn::Ptr{Ptr{MDB_txn}})::Cint
@@ -193,11 +228,23 @@ function mdb_txn_env(txn)
 end
 
 function mdb_txn_id(txn)
-    @ccall liblmdb.mdb_txn_id(txn::Ptr{MDB_txn})::Csize_t
+    @ccall liblmdb.mdb_txn_id(txn::Ptr{MDB_txn})::mdb_size_t
+end
+
+@checked function mdb_txn_flags(txn, flags)
+    @ccall liblmdb.mdb_txn_flags(txn::Ptr{MDB_txn}, flags::Ptr{Cuint})::Cint
 end
 
 @checked function mdb_txn_commit(txn)
     @ccall liblmdb.mdb_txn_commit(txn::Ptr{MDB_txn})::Cint
+end
+
+@checked function mdb_txn_prepare(txn)
+    @ccall liblmdb.mdb_txn_prepare(txn::Ptr{MDB_txn})::Cint
+end
+
+@checked function mdb_env_rollback(env, txnid)
+    @ccall liblmdb.mdb_env_rollback(env::Ptr{MDB_env}, txnid::mdb_size_t)::Cint
 end
 
 function mdb_txn_abort(txn)
@@ -279,6 +326,10 @@ function mdb_cursor_dbi(cursor)
     @ccall liblmdb.mdb_cursor_dbi(cursor::Ptr{MDB_cursor})::MDB_dbi
 end
 
+function mdb_cursor_is_db(cursor)
+    @ccall liblmdb.mdb_cursor_is_db(cursor::Ptr{MDB_cursor})::Cint
+end
+
 @checked function mdb_cursor_get(cursor, key, data, op)
     @ccall liblmdb.mdb_cursor_get(cursor::Ptr{MDB_cursor}, key::Ptr{MDB_val},
                                   data::Ptr{MDB_val}, op::MDB_cursor_op)::Cint
@@ -294,7 +345,7 @@ end
 end
 
 @checked function mdb_cursor_count(cursor, countp)
-    @ccall liblmdb.mdb_cursor_count(cursor::Ptr{MDB_cursor}, countp::Ptr{Csize_t})::Cint
+    @ccall liblmdb.mdb_cursor_count(cursor::Ptr{MDB_cursor}, countp::Ptr{mdb_size_t})::Cint
 end
 
 function mdb_cmp(txn, dbi, a, b)
@@ -319,15 +370,53 @@ end
     @ccall liblmdb.mdb_reader_check(env::Ptr{MDB_env}, dead::Ptr{Cint})::Cint
 end
 
-const MDB_VERSION_MAJOR = 0
+# typedef int ( MDB_str2key_func ) ( const char * passwd , MDB_val * key )
+const MDB_str2key_func = Cvoid
 
-const MDB_VERSION_MINOR = 9
+struct MDB_crypto_funcs
+    mcf_str2key::Ptr{MDB_str2key_func}
+    mcf_encfunc::Ptr{MDB_enc_func}
+    mcf_sumfunc::Ptr{MDB_sum_func}
+    mcf_keysize::Cint
+    mcf_esumsize::Cint
+    mcf_sumsize::Cint
+end
 
-const MDB_VERSION_PATCH = 33
+# typedef MDB_crypto_funcs * ( MDB_crypto_hooks ) ( void )
+const MDB_crypto_hooks = Cvoid
 
-const MDB_VERSION_DATE = "May 21, 2024"
+function mdb_modload(file, symname, mcf_ptr, errmsg)
+    @ccall liblmdb.mdb_modload(file::Cstring, symname::Cstring,
+                               mcf_ptr::Ptr{Ptr{MDB_crypto_funcs}},
+                               errmsg::Ptr{Cstring})::Ptr{Cvoid}
+end
+
+function mdb_modunload(handle)
+    @ccall liblmdb.mdb_modunload(handle::Ptr{Cvoid})::Cvoid
+end
+
+function mdb_modsetup(env, mcf_ptr, passphrase)
+    @ccall liblmdb.mdb_modsetup(env::Ptr{MDB_env}, mcf_ptr::Ptr{MDB_crypto_funcs},
+                                passphrase::Cstring)::Cvoid
+end
+
+const MDB_FMT_Z = "z"
+
+const MDB_RPAGE_CACHE = 1
+
+const MDB_SIZE_MAX = typemax(mdb_size_t)
+
+const MDB_VERSION_MAJOR = 1
+
+const MDB_VERSION_MINOR = 0
+
+const MDB_VERSION_PATCH = 0
+
+const MDB_VERSION_DATE = "June 30, 2026"
 
 const MDB_FIXEDMAP = 0x01
+
+const MDB_ENCRYPT = Cuint(0x2000)
 
 const MDB_NOSUBDIR = 0x4000
 
@@ -348,6 +437,10 @@ const MDB_NOLOCK = 0x00400000
 const MDB_NORDAHEAD = 0x00800000
 
 const MDB_NOMEMINIT = 0x01000000
+
+const MDB_PREVSNAPSHOT = 0x02000000
+
+const MDB_REMAP_CHUNKS = 0x04000000
 
 const MDB_REVERSEKEY = 0x02
 
@@ -421,4 +514,26 @@ const MDB_BAD_VALSIZE = -30781
 
 const MDB_BAD_DBI = -30780
 
-const MDB_LAST_ERRCODE = MDB_BAD_DBI
+const MDB_PROBLEM = -30779
+
+const MDB_BAD_CHECKSUM = -30778
+
+const MDB_CRYPTO_FAIL = -30777
+
+const MDB_ENV_ENCRYPTION = -30776
+
+const MDB_TXN_PENDING = -30775
+
+const MDB_CANT_ROLLBACK = -30774
+
+const MDB_DBIS_BUSY = -30773
+
+const MDB_SHORT_WRITE = -30772
+
+const MDB_ENV_BUSY = -30771
+
+const MDB_IS_READONLY = -30770
+
+const MDB_ADDR_BUSY = -30769
+
+const MDB_LAST_ERRCODE = MDB_ADDR_BUSY
