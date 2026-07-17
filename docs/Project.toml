@@ -4,3 +4,4 @@ LMDB = "11f193de-5e89-5f17-923a-7d207d56daf9"
 
 [compat]
 Documenter = "1"
+LMDB = "3.0.0"
