@@ -127,6 +127,9 @@ box. Structured framed-value decoders read like any other Julia parser.
 
 ## Memory ownership rules
 
+- Raw cursor handles do not get the high-level wrapper's lifetime management.
+  Close them before committing or aborting their transaction; the bundled LMDB
+  can access freed transaction state when a read cursor is closed afterward.
 - The `mv_data` pointer of an `MDB_val` produced by a read is owned by LMDB.
   It is valid until the next update operation or the end of the transaction.
   The default `Vector{E}` and `String` `read(::MDBValueIO, T)` methods

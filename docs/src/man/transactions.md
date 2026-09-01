@@ -29,10 +29,10 @@ end                                       # commits if no throw
 
 ## Commit / abort
 
-`commit(txn)` publishes the transaction's modifications and frees the handle;
-durability depends on the environment's synchronization flags. `abort(txn)`
-discards the modifications. Repeated calls are no-ops. A finalizer aborts an
-abandoned live transaction.
+`commit(txn)` closes the transaction's cursors, publishes its modifications,
+and frees the handle; durability depends on the environment's synchronization
+flags. `abort(txn)` closes the cursors and discards the modifications. Repeated
+calls are no-ops. A finalizer aborts an abandoned live transaction.
 
 After `commit` or `abort`, the txn (and any cursors created against it)
 must not be used. Continuing to call `mdb_*` against a freed handle is

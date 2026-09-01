@@ -20,9 +20,9 @@ Transaction(env; flags = LMDB.MDB_RDONLY) do txn
 end
 ```
 
-A cursor is bound to its transaction. A read-only cursor must still be closed
-after its transaction ends; the wrapper's `close` and finalizer handle both
-read and write cursor lifetimes.
+A cursor is bound to its transaction. LMDB.jl closes it before that transaction
+commits or aborts, so it cannot be renewed afterward. To reuse a read-only
+cursor across snapshots, keep the handles alive with `reset` and `renew` below.
 
 ## Navigation
 

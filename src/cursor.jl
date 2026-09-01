@@ -6,13 +6,13 @@
 
 """
 A cursor for navigating a database. It retains its transaction and database,
-and closes a live handle when finalized.
+and closes a live handle when finalized. Ending the transaction closes the
+cursor first.
 """
 mutable struct Cursor
     handle::Ptr{MDB_cursor}
     txn::Transaction
     dbi::Database
-    readonly::Bool
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_cursor}}, c::Cursor) = c.handle
@@ -28,10 +28,8 @@ Open a cursor over `dbi` in `txn`.
 function Cursor(txn::Transaction, dbi::Database)
     cur_ptr_ref = Ref{Ptr{MDB_cursor}}(C_NULL)
     mdb_cursor_open(txn, dbi, cur_ptr_ref)
-    txn_flags = Ref{Cuint}()
-    mdb_txn_flags(txn, txn_flags)
-    cur = Cursor(cur_ptr_ref[], txn, dbi,
-                 isflagset(txn_flags[], Cuint(MDB_RDONLY)))
+    cur = Cursor(cur_ptr_ref[], txn, dbi)
+    txn.cursors[cur.handle] = WeakRef(cur)
     finalizer(close, cur)
     return cur
 end
@@ -53,19 +51,21 @@ end
 
 "Close a cursor. Idempotent."
 function close(cur::Cursor)
-    cur.handle == C_NULL && return
-    # Write transactions free their cursors. Read cursors remain allocated after
-    # a transaction ends and must be closed before the environment.
-    if isopen(cur.txn) || (cur.readonly && isopen(cur.txn.env))
-        mdb_cursor_close(cur)
-    end
+    handle = cur.handle
+    handle == C_NULL && return
     cur.handle = C_NULL
+    delete!(cur.txn.cursors, handle)
+    isopen(cur.txn) && mdb_cursor_close(handle)
     return
 end
 
-"Renew a read-only cursor for use with `txn`."
+"Renew an open read-only cursor for use with `txn`, typically after `reset`."
 function renew(txn::Transaction, cur::Cursor)
     mdb_cursor_renew(txn, cur)
+    delete!(cur.txn.cursors, cur.handle)
+    cur.txn = txn
+    txn.cursors[cur.handle] = WeakRef(cur)
+    return
 end
 
 "Return the cursor's transaction."

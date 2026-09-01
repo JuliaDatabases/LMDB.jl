@@ -7,6 +7,8 @@ the transaction's lifetime. A live transaction is aborted when finalized.
 mutable struct Transaction
     handle::Ptr{MDB_txn}
     env::Environment
+    # Retain native handles without keeping cursor wrappers alive.
+    cursors::Dict{Ptr{MDB_cursor},WeakRef}
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_txn}}, t::Transaction) = t.handle
@@ -28,7 +30,7 @@ function Transaction(env::Environment; flags::Integer = zero(Cuint),
     txn_ref = Ref{Ptr{MDB_txn}}(C_NULL)
     p = parent === nothing ? C_NULL : parent
     mdb_txn_begin(env, p, Cuint(flags), txn_ref)
-    txn = Transaction(txn_ref[], env)
+    txn = Transaction(txn_ref[], env, Dict{Ptr{MDB_cursor},WeakRef}())
     # Allow `close(env)` to end this transaction first.
     push!(env.txns, WeakRef(txn))
     finalizer(_finalize_txn, txn)
@@ -55,19 +57,25 @@ function Transaction(f::Function, env::Environment;
     end
 end
 
-"""Abort the transaction and free its handle. Repeated calls are no-ops."""
+"""Abort the transaction, close its cursors, and free its handle. Repeated calls are no-ops."""
 function abort(txn::Transaction)
     txn.handle == C_NULL && return
     # Closing the environment invalidates all child handles.
-    isopen(txn.env) || (txn.handle = C_NULL; return)
+    if !isopen(txn.env)
+        _invalidate_cursors!(txn)
+        txn.handle = C_NULL
+        return
+    end
+    _close_cursors!(txn)
     mdb_txn_abort(txn)
     txn.handle = C_NULL
     return
 end
 
-"""Commit the transaction and free its handle. Repeated calls are no-ops."""
+"""Commit the transaction, close its cursors, and free its handle. Repeated calls are no-ops."""
 function commit(txn::Transaction)
     txn.handle == C_NULL && return
+    _close_cursors!(txn)
     # LMDB frees the handle even when commit fails; clear it before throwing.
     ret = unchecked_mdb_txn_commit(txn)
     txn.handle = C_NULL
@@ -77,6 +85,27 @@ end
 
 # Release a reader slot or the single-writer lock held by an abandoned txn.
 _finalize_txn(t::Transaction) = abort(t)
+
+function _invalidate_cursors!(txn::Transaction)
+    cursors = txn.cursors
+    txn.cursors = Dict{Ptr{MDB_cursor},WeakRef}()
+    for wr in values(cursors)
+        cur = wr.value
+        cur === nothing || (cur.handle = C_NULL)
+    end
+    return
+end
+
+function _close_cursors!(txn::Transaction)
+    cursors = txn.cursors
+    txn.cursors = Dict{Ptr{MDB_cursor},WeakRef}()
+    for (handle, wr) in cursors
+        cur = wr.value
+        cur === nothing || (cur.handle = C_NULL)
+        mdb_cursor_close(handle)
+    end
+    return
+end
 
 """Release a read-only transaction's snapshot while retaining its handle."""
 function reset(txn::Transaction)

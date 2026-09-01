@@ -108,7 +108,7 @@ mktempdir() do dir
     end
 end
 
-# Write transactions free their cursors; finalization must not close them again.
+# Transactions close their cursors before ending.
 mktempdir() do dir
     env = LMDB.Environment(dir)
     try
@@ -118,21 +118,55 @@ mktempdir() do dir
         LMDB.put!(txn, dbi, "k", "v")
         LMDB.commit(txn)
         @test !isopen(txn)
+        @test !isopen(cur)
         finalize(cur)
     finally
         close(env)
     end
 end
 
-# Read-only cursors remain allocated after their transaction ends and must
-# still be closed explicitly while the environment is live.
+# Work around LMDB's post-transaction cursor-close use-after-free.
 mktempdir() do dir
     LMDB.Environment(dir) do env
         txn = LMDB.Transaction(env; flags = LMDB.MDB_RDONLY)
         dbi = LMDB.Database(txn)
         cur = LMDB.Cursor(txn, dbi)
         LMDB.commit(txn)
+        @test !isopen(txn)
+        @test !isopen(cur)
         close(cur)
+    end
+end
+
+mktempdir() do dir
+    LMDB.Environment(dir) do env
+        txn = LMDB.Transaction(env; flags = LMDB.MDB_RDONLY)
+        dbi = LMDB.Database(txn)
+        cur = LMDB.Cursor(txn, dbi)
+        LMDB.abort(txn)
+        @test !isopen(txn)
+        @test !isopen(cur)
+    end
+end
+
+# Renewing a cursor transfers cleanup responsibility to the new transaction.
+mktempdir() do dir
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            dbi = LMDB.Database(txn)
+            LMDB.put!(txn, dbi, "k", "v")
+        end
+        txn1 = LMDB.Transaction(env; flags = LMDB.MDB_RDONLY)
+        dbi = LMDB.Database(txn1)
+        cur = LMDB.Cursor(txn1, dbi)
+        reset(txn1)
+        txn2 = LMDB.Transaction(env; flags = LMDB.MDB_RDONLY)
+        LMDB.renew(txn2, cur)
+        @test LMDB.transaction(cur) === txn2
+        LMDB.abort(txn1)
+        @test isopen(cur)
+        @test LMDB.seek!(cur, String) == "k"
+        LMDB.commit(txn2)
         @test !isopen(cur)
     end
 end
@@ -141,9 +175,12 @@ end
 mktempdir() do dir
     env = LMDB.Environment(dir)
     txn = LMDB.Transaction(env)
+    dbi = LMDB.Database(txn)
+    cur = LMDB.Cursor(txn, dbi)
     @test isopen(txn)
     close(env)
     @test !isopen(txn)
+    @test !isopen(cur)
     finalize(txn)
 end
 mktempdir() do dir

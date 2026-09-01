@@ -78,8 +78,9 @@ with a finalizer:
 
 Parent references pin the lifetime: a `Cursor` keeps its `Transaction`
 alive, which keeps its `Environment` alive. Repeated `close`, `commit`, and
-`abort` calls are no-ops. Finalizers eventually release abandoned handles;
-use do-blocks for deterministic cleanup.
+`abort` calls are no-ops. Ending a transaction closes its cursors first.
+Finalizers eventually release abandoned handles; use do-blocks for
+deterministic cleanup.
 
 The do-block constructors are usually what you want:
 
