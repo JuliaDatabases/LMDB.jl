@@ -20,9 +20,9 @@ Transaction(env; flags = LMDB.MDB_RDONLY) do txn
 end
 ```
 
-A cursor is bound to its transaction; closing the txn invalidates the
-cursor. The cursor's finalizer is idempotent, so a still-open cursor is
-reclaimed when GC visits it.
+A cursor is bound to its transaction. LMDB.jl closes it before that transaction
+commits or aborts, so it cannot be renewed afterward. To reuse a read-only
+cursor across snapshots, keep the handles alive with `reset` and `renew` below.
 
 ## Navigation
 
@@ -90,10 +90,9 @@ For the same pattern one level up (already wrapped, returns a
 two shapes:
 
 ```julia
-# Untyped: receives Ref{MDB_val} pairs (zero-copy, mmap pointers)
+# Untyped: receives reused Ref{MDB_val} pairs
 walk(cur) do k_ref, v_ref
     kv = k_ref[]; vv = v_ref[]
-    # kv.mv_data / vv.mv_data are mmap pointers, valid in this scope
     do_something(kv.mv_size, vv.mv_size)
 end
 
@@ -109,10 +108,9 @@ Pass `from = key` to start at the smallest entry `≥ key` (i.e.
 The callback can return `false` to stop iteration; any other return
 (including `nothing`) continues.
 
-Use the untyped form when you want to inspect raw byte sizes, copy
-slices, or feed a custom decoder. The data pointers are into LMDB's
-mmap and are valid only inside the callback (and only for the
-surrounding txn). The typed form is the iteration analogue of
+Use the untyped form to inspect raw byte sizes or copy bytes. The `Ref`s are
+reused on the next iteration, and LMDB invalidates returned data after an
+update or when the transaction ends. The typed form is the iteration analogue of
 `get(..., T, nothing)` and works for any `T` for which
 `Base.read(io::IO, ::Type{T})` (or
 `Base.read(io::LMDB.MDBValueIO, ::Type{T})`) is defined. See
@@ -130,16 +128,14 @@ delete!(cur)
 delete!(cur; flags = LMDB.MDB_NODUPDATA)
 ```
 
-`count(cur)` returns the number of duplicate values for the current
-key (1 in non-DUPSORT databases).
+`count(cur)` returns the number of values at the current key in an
+`MDB_DUPSORT` database.
 
 ## Custom value decoding
 
-`get`, `key`, `value`, `item`, and typed `walk` all funnel
-through `Base.read(io::IO, ::Type{T})` against an
-[`MDBValueIO`](@ref LMDB.MDBValueIO). The defaults cover Base's
-primitive numeric types (`Int8`/…/`Float64`, `Bool`, `Char`, `Ptr`),
-`String`, and (added by this package) `Vector{E}` for any bitstype `E`.
+`get`, `key`, `value`, `item`, and typed `walk` decode through
+[`MDBValueIO`](@ref LMDB.MDBValueIO). The package handles `String` and
+`Vector{E}` for bitstype `E`; Base supplies fixed-width primitive reads.
 
 For everything else, including `isbitstype` structs and framed
 values, define a single `Base.read` method on the abstract `IO`.
@@ -160,13 +156,10 @@ walk(cur, String, PrefixedBlob) do k, blob
 end
 ```
 
-`MDBValueIO <: IO`, so all the usual `Base` IO primitives work on it:
+`MDBValueIO <: IO` supports the IO operations needed by binary decoders:
 `position`, `seek`, `skip`, `read(io, n::Integer)`, `read(io, T)`,
-`read!(io, A)`, `bytesavailable`, `eof`. Structured framed-value
-decoders end up reading like any other Julia binary parser, and the
-same decoder works against any byte source. This is the analogue of
-heed's `BytesDecode<'txn>` trait, expressed through Julia's existing IO
-extension point instead of a bespoke trait.
+`read!(io, A)`, `bytesavailable`, and `eof`. A decoder defined for `IO` can
+also work with other byte sources.
 
 ## Reset and renew
 

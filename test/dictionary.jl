@@ -1,6 +1,5 @@
 @testset "Dictionary interface" begin
 
-# Basic round-trip with String keys, Float64 values.
 mktempdir() do dir
     d = LMDBDict{String, Float64}(dir)
     d["x"] = 5.0
@@ -12,7 +11,6 @@ mktempdir() do dir
     @test haskey(d, "x")
     @test !haskey(d, "a")
 
-    # AbstractDict iteration: keys/values/pairs are lazy iterators.
     @test collect(keys(d)) == ["x", "y", "z"]
     @test collect(values(d)) == [5.0, 12.0, 3.0]
     @test collect(d) == ["x"=>5.0, "y"=>12.0, "z"=>3.0]
@@ -23,21 +21,17 @@ mktempdir() do dir
     @test keytype(d) == String
     @test valtype(d) == Float64
 
-    # in(::Pair) — comes free from AbstractDict.
     @test ("x" => 5.0) in d
     @test !(("x" => 99.0) in d)
 
-    # `for` loop yields Pair{K,V}.
     seen = Pair{String,Float64}[]
     for kv in d
         push!(seen, kv)
     end
     @test seen == ["x"=>5.0, "y"=>12.0, "z"=>3.0]
 
-    # delete! / pop! / KeyError on missing.
     delete!(d, "z")
     @test !haskey(d, "z")
-    # delete! of a missing key is a no-op, matching Base.delete!(::Dict).
     @test delete!(d, "z") === d
     @test delete!(d, "never-existed") === d
     @test_throws KeyError d["z"]
@@ -45,21 +39,15 @@ mktempdir() do dir
     @test pop!(d, "z", :missing) === :missing
     @test pop!(d, "y") === 12.0
     @test !haskey(d, "y")
-    @test LMDB.valuesize(d) == sizeof(Float64)*1  # only "x" left
+    @test LMDB.valuesize(d) == sizeof(Float64)*1
 
-    # `pop!(d)` (no key) pops the lexicographically-first entry.
     @test pop!(d) == ("x" => 5.0)
     @test isempty(d)
     @test_throws ArgumentError pop!(d)
     close(d)
 end
 
-# `empty`/`copy` refuse to fabricate a path-less LMDBDict; users reach
-# for `Dict(d)` to get an in-memory snapshot, or `copy(d.env, path)` to
-# clone on disk. `filter` goes through `empty(d)` so it throws as well.
-# `merge` builds a fresh `Dict{K,V}(d)` via iteration, so it works and
-# returns a regular Dict — the same shape the user would get from
-# `Dict(d)` themselves.
+# Out-of-place operations that require `empty(d)` cannot invent a new path.
 mktempdir() do dir
     d = LMDBDict{String, Int}(dir)
     d["a"] = 1; d["b"] = 2; d["c"] = 3
@@ -69,12 +57,10 @@ mktempdir() do dir
     @test_throws ArgumentError copy(d)
     @test_throws ArgumentError filter(p -> isodd(p.second), d)
 
-    # Canonical in-memory snapshot: the AbstractDict constructor on Dict.
     snap = Dict(d)
     @test snap isa Dict{String, Int}
     @test snap == Dict("a" => 1, "b" => 2, "c" => 3)
 
-    # `merge` builds a Dict via iteration, no empty(d) involved.
     merged = merge(d, Dict("b" => 20, "d" => 40))
     @test merged isa Dict{String, Int}
     @test merged == Dict("a" => 1, "b" => 20, "c" => 3, "d" => 40)
@@ -82,7 +68,6 @@ mktempdir() do dir
     close(d)
 end
 
-# Int → Int with a numeric key range.
 mktempdir() do dir
     d = LMDBDict{Int64, Int16}(dir)
     for i in 1:10
@@ -97,7 +82,6 @@ mktempdir() do dir
     @test valtype(d) == Int16
     @test keytype(d) == Int64
 
-    # empty! drops every entry.
     empty!(d)
     @test length(d) == 0
     @test isempty(d)
@@ -105,7 +89,6 @@ mktempdir() do dir
     close(d)
 end
 
-# Hierarchical keys: prefix-scan helpers + list_dirs.
 mktempdir() do dir
     d = LMDBDict{String, Vector{Float32}}(dir)
     d["aa/a"] = Float32[1,2,3,4]
@@ -129,9 +112,7 @@ mktempdir() do dir
     close(d)
 end
 
-# Iteration leaves no leftover state — a second pass returns the same
-# entries, and an interleaved `length` (which opens a separate read txn)
-# works mid-iteration.
+# `MDB_NOTLS` permits the nested read transaction opened by `length`.
 mktempdir() do dir
     d = LMDBDict{String, Int}(dir)
     d["a"] = 1; d["b"] = 2; d["c"] = 3
@@ -148,7 +129,7 @@ end
 
 @testset "env kwargs in LMDBDict ctor (#45)" begin
     mktempdir() do dir
-        big = Csize_t(8) * 1024^3  # 8 GiB
+        big = Csize_t(8) * 1024^3
         d = LMDBDict{String, Int64}(dir; mapsize=big, readers=42, dbs=4)
         @test d.env[:Readers] == 42
         @test LMDB.info(d.env).mapsize == big
@@ -227,8 +208,6 @@ end
         @test sort(collect(keys(d))) == ["a", "b", "c"]
         @test d["b"] == 2
 
-        # mergewith! combines existing values via `combine`, falls back
-        # to the new value when the key is absent.
         mergewith!(+, d, Dict("a" => 10, "d" => 4))
         @test d["a"] == 11
         @test d["d"] == 4

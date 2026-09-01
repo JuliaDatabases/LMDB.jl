@@ -1,9 +1,5 @@
-# cuTile-shaped framed value: 8-byte LE atime prefix, then the payload.
-# Defined at file scope to demonstrate the `Base.read(::IO, …)`
-# extension contract and to regression-guard it (a downstream package
-# — cuTile's DiskCache — relies on being able to plug in its own
-# decoder against the abstract `IO`, without depending on
-# `LMDB.MDBValueIO` in its own type signatures).
+# Model cuTile's decoder, which extends `Base.read(::IO, ...)` without naming
+# `LMDB.MDBValueIO`.
 struct AtimedBlob end
 const ATIME_PREFIX = 8
 
@@ -22,11 +18,7 @@ end
 
 @testset "Integration" begin
 
-# Power-user pattern: open an env via the LMDB.Environment kwargs ctor, run
-# a write txn through the Julia wrappers, then a read txn through a cursor
-# walk using only the Julia wrappers + raw MDB_val refs (the shape
-# cuTile.DiskCache follows). Regression guard: ensures no future change
-# breaks the `walk(...) do k_ref, v_ref` zero-copy idiom.
+# Exercise the wrapper and raw `MDB_val` callback paths used by cuTile.DiskCache.
 mktempdir() do dir
     env = LMDB.Environment(dir;
                       mapsize    = 1 << 28,
@@ -39,16 +31,13 @@ mktempdir() do dir
         end
         @test psize > 0
 
-        # Populate.
         LMDB.Transaction(env) do txn
             for i in 1:5
                 LMDB.put!(txn, dbi, "key$(i)", "value$(i)")
             end
         end
 
-        # Julia-API read txn + cursor walk over the LMDB-owned mmap, like
-        # cuTile's eviction scan: zero allocations beyond the per-entry
-        # tuple.
+        # Read sizes directly from LMDB-owned values, as in an eviction scan.
         entries = Tuple{String, Int}[]
         LMDB.Transaction(env; flags = LMDB.MDB_RDONLY) do txn
             LMDB.Cursor(txn, dbi) do cur
@@ -63,15 +52,12 @@ mktempdir() do dir
         @test first.(entries) == ["key$i" for i in 1:5]
         @test all(e -> e[2] == sizeof("value1"), entries)
 
-        # get-with-nothing on present vs missing — common cuTile-shaped read path.
         LMDB.Transaction(env; flags = LMDB.MDB_RDONLY) do txn
             @test get(txn, dbi, "key3", String, nothing) == "value3"
             @test get(txn, dbi, "ghost", String, nothing) === nothing
         end
 
-        # Batch delete: present keys return true, missing return false,
-        # no exception on either path. cuTile's `_delete_batch!` uses
-        # the Bool to count actual evictions.
+        # cuTile's batch deletion uses the Bool result to count evictions.
         deleted = 0
         LMDB.Transaction(env) do txn
             for k in ["key1", "ghost", "key3"]
@@ -85,9 +71,7 @@ mktempdir() do dir
             @test get(txn, dbi, "key3", String, nothing) === nothing
         end
 
-        # MDBValueIO extension: write an 8-byte-prefixed framed value
-        # and read it back via `get(..., AtimedBlob, nothing)`, getting the
-        # payload tail with one alloc + skip + copy, no slicing.
+        # Decode a framed value through the abstract-IO extension point.
         payload = Vector{UInt8}("cubin-bytes-here")
         atime = UInt64(0xdeadbeefcafebabe)
         LMDB.Transaction(env) do txn

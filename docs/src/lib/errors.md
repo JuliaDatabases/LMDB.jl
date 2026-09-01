@@ -4,10 +4,8 @@
 CurrentModule = LMDB
 ```
 
-Every LMDB-internal error surfaces as an `LMDBError` whose `code` field is
-the raw status `Cint` returned by the underlying binding. Status-code
-matchers cover the most common branches; less common codes can be matched
-against `LMDB.MDB_*` constants directly.
+`LMDBError.code` contains the raw status returned by LMDB. Compare it with a
+qualified `LMDB.MDB_*` constant when handling a particular error.
 
 ## Exception type
 
@@ -17,8 +15,7 @@ LMDBError
 
 ## Status constants
 
-The full set of LMDB status codes is exposed as `LMDB.MDB_*`. The
-commonly-needed ones are exported:
+The full set of status codes is available as qualified `LMDB.MDB_*` names:
 
 | constant | meaning |
 |----------|---------|

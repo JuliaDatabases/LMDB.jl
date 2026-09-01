@@ -1,6 +1,4 @@
-# Fixtures for the typed-read extension-point tests below. Defined at
-# module scope because `const` and `struct` aren't allowed inside a
-# `@testset` block.
+# Fixtures must be at module scope because `struct` and `const` cannot be local.
 struct Point2D
     x::Float32
     y::Float32
@@ -26,8 +24,7 @@ end
 key = 10
 val = "key value is "
 
-# Procedural style + block style smoke test, exercising String, Int, and
-# Vector{Int} round-trips through put!/get/delete!.
+# Exercise manual and do-block lifecycles with several value representations.
 mktempdir() do dbname
     env = LMDB.Environment(dbname)
     try
@@ -47,7 +44,6 @@ mktempdir() do dbname
     end
     @test !isopen(env)
 
-    # Block style
     LMDB.Environment(dbname; flags = LMDB.MDB_NOSYNC) do env
         LMDB.Transaction(env) do txn
             LMDB.Database(txn; flags = Cuint(LMDB.MDB_REVERSEKEY)) do dbi
@@ -71,8 +67,6 @@ mktempdir() do dbname
     end
 end
 
-# get-with-default / stat(txn, dbi) — fresh env so the entry count is
-# deterministic.
 mktempdir() do dir
     LMDB.Environment(dir) do env
         LMDB.Transaction(env) do txn
@@ -94,15 +88,11 @@ mktempdir() do dir
     end
 end
 
-# put_reserved!: callback-style MDB_RESERVE write.
 mktempdir() do dir
     LMDB.Environment(dir) do env
         LMDB.Transaction(env) do txn
             LMDB.Database(txn) do dbi
-                # Write a 16-byte value where bytes 0..7 are a UInt64
-                # header and bytes 8..15 are payload. The buffer hands
-                # back is the LMDB-allocated mmap page; we fill it
-                # in place — no intermediate Vector.
+                # Fill reserved LMDB storage with a header and payload.
                 LMDB.put_reserved!(txn, dbi, "framed", 16) do buf
                     @test buf isa Vector{UInt8}
                     @test length(buf) == 16
@@ -118,18 +108,18 @@ mktempdir() do dir
                       UInt64(0xdeadbeef)
                 @test raw[9:16] == UInt8[1, 2, 3, 4, 5, 6, 7, 8]
 
-                # Return value: whatever the callback returns.
                 rv = LMDB.put_reserved!(txn, dbi, "rv", 4) do buf
                     fill!(buf, 0xab)
                     :sentinel
                 end
                 @test rv === :sentinel
+                @test_throws ArgumentError LMDB.put_reserved!(_ -> nothing, txn, dbi,
+                                                               "bad", -1)
             end
         end
     end
 end
 
-# delete!: Bool-returning, idempotent on MDB_NOTFOUND.
 mktempdir() do dir
     LMDB.Environment(dir) do env
         LMDB.Transaction(env) do txn
@@ -137,15 +127,12 @@ mktempdir() do dir
                 LMDB.put!(txn, dbi, "k1", "v1")
                 LMDB.put!(txn, dbi, "k2", "v2")
 
-                # Present key → true, returns and entry is gone.
                 @test LMDB.delete!(txn, dbi, "k1") === true
                 @test get(txn, dbi, "k1", String, nothing) === nothing
 
-                # Missing key → false, no exception.
                 @test LMDB.delete!(txn, dbi, "ghost") === false
-                @test LMDB.delete!(txn, dbi, "k1") === false  # already gone
+                @test LMDB.delete!(txn, dbi, "k1") === false
 
-                # Idempotent: a second delete on the same key is a no-op.
                 @test LMDB.delete!(txn, dbi, "k2") === true
                 @test LMDB.delete!(txn, dbi, "k2") === false
             end
@@ -153,23 +140,18 @@ mktempdir() do dir
     end
 end
 
-# replace! / pop!
 mktempdir() do dir
     LMDB.Environment(dir) do env
         LMDB.Transaction(env) do txn
             LMDB.Database(txn) do dbi
-                # replace! on a missing key returns nothing and creates the entry.
                 @test LMDB.replace!(txn, dbi, "k", "v1") === nothing
                 @test get(txn, dbi, "k", String, nothing) == "v1"
 
-                # replace! on an existing key returns the old value.
                 @test LMDB.replace!(txn, dbi, "k", "v2") == "v1"
                 @test get(txn, dbi, "k", String, nothing) == "v2"
 
-                # pop! returns the value and deletes.
                 @test LMDB.pop!(txn, dbi, "k", String) == "v2"
                 @test get(txn, dbi, "k", String, nothing) === nothing
-                # pop! on a missing key returns nothing.
                 @test LMDB.pop!(txn, dbi, "k", String) === nothing
             end
         end
@@ -190,12 +172,9 @@ mktempdir() do dir
                 @test get(txn, dbi, "origin", Point2D, nothing) == Point2D(0f0, 0f0)
                 @test get(txn, dbi, "p1", Point2D)             == Point2D(1.5f0, 2.5f0)
 
-                # The Vector{E} overload also works for any bitstype E,
-                # without the user defining anything extra.
                 @test get(txn, dbi, "p1", Vector{Point2D}, nothing) ==
                       [Point2D(1.5f0, 2.5f0)]
 
-                # Typed walk decodes both K and V through Base.read.
                 seen = Pair{String,Point2D}[]
                 LMDB.Cursor(txn, dbi) do cur
                     LMDB.walk(cur, String, Point2D) do k, v
@@ -210,10 +189,7 @@ mktempdir() do dir
     end
 end
 
-# Framed values: a custom `Base.read` can use the IO interface
-# (`skip`, `position`) to step past a header before decoding the
-# payload. Exercises the IO contract from inside user code (see
-# `FramedU64` / `FRAME_MAGIC` at module scope).
+# Exercise `position` and `skip` from a custom decoder.
 mktempdir() do dir
     LMDB.Environment(dir) do env
         LMDB.Transaction(env) do txn
@@ -229,26 +205,41 @@ mktempdir() do dir
     end
 end
 
-# Non-Array AbstractArray inputs (e.g. `ReinterpretArray`, contiguous
-# `SubArray`) flow through `cconvert(Ptr{MDB_val}, ::AbstractArray)`.
+# Pointer-compatible contiguous array wrappers can be stored without copying.
 mktempdir() do dir
     LMDB.Environment(dir) do env
         LMDB.Transaction(env) do txn
             LMDB.Database(txn) do dbi
-                # ReinterpretArray view onto a backing UInt64 vector.
                 ra_key = reinterpret(UInt8, UInt64[0xdeadbeefcafef00d])
                 @test !(ra_key isa Array)
                 LMDB.put!(txn, dbi, ra_key, "v-reinterpret")
                 @test get(txn, dbi, ra_key, String, nothing) == "v-reinterpret"
                 @test get(txn, dbi, collect(ra_key), String, nothing) == "v-reinterpret"
+                @test_throws ArgumentError get(txn, dbi, ra_key, Vector{String},
+                                                nothing)
 
-                # Contiguous SubArray.
                 backing = collect(0x01:0x10)
                 sv_key = view(backing, 4:8)
                 @test !(sv_key isa Array)
                 LMDB.put!(txn, dbi, sv_key, "v-subarray")
                 @test get(txn, dbi, sv_key, String, nothing) == "v-subarray"
                 @test get(txn, dbi, collect(sv_key), String, nothing) == "v-subarray"
+
+                noncontiguous = view(reshape(UInt8.(1:9), 3, 3), 1:2, 1:2)
+                @test_throws ArgumentError LMDB.put!(txn, dbi, noncontiguous, "bad")
+                @test_throws ArgumentError LMDB.put!(txn, dbi, ["not", "bits"], "bad")
+            end
+        end
+    end
+end
+
+@testset "Database handle lifecycle" begin
+    mktempdir() do dir
+        LMDB.Environment(dir; maxdbs = 1) do env
+            LMDB.Transaction(env) do txn
+                dbi = LMDB.Database(txn, "named"; flags = LMDB.MDB_CREATE)
+                LMDB.drop(txn, dbi; delete = true)
+                @test !isopen(dbi)
             end
         end
     end

@@ -10,8 +10,8 @@ database handle, and cursor lives inside one env.
 
 ## Creating and opening
 
-`Environment(path; kwargs...)` does the whole open dance — allocate
-the handle, set mapsize/maxreaders/maxdbs/flags, open the directory:
+`Environment(path; kwargs...)` allocates the handle, applies the requested
+settings, and opens the environment:
 
 ```julia
 env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
@@ -21,8 +21,7 @@ env = Environment("/tmp/mydb"; mapsize    = 1 << 30,   # 1 GiB virtual map
                                flags      = LMDB.MDB_NOTLS)
 ```
 
-If anything fails on the way through, the half-open env is closed
-before the exception propagates.
+If setup or opening fails, the allocated handle is closed before rethrowing.
 
 Before the env is open, `pagesize` maps to `mdb_env_set_pagesize`.
 The `[:Flags]` / `[:Readers]` / `[:MapSize]` / `[:PageSize]` / `[:DBs]`
@@ -53,10 +52,10 @@ end
 | `MDB_NOSUBDIR`   | `path` is a single file, not a directory |
 | `MDB_NOSYNC`     | don't `fsync` on commit (faster, less durable) |
 | `MDB_NOMETASYNC` | `fsync` data but not metadata |
-| `MDB_WRITEMAP`   | mmap as writable; faster but requires more discipline (no torn writes from other processes) |
+| `MDB_WRITEMAP`   | write directly to the memory map; incompatible with nested transactions |
 | `MDB_NOMEMINIT`  | skip zero-init of new pages |
-| `MDB_NOTLS`      | drop thread-local reader slots, needed for multiple read txns on one thread |
-| `MDB_NORDAHEAD`  | turn off OS-level read-ahead, better for cold-page workloads |
+| `MDB_NOTLS`      | tie reader slots to transactions rather than threads |
+| `MDB_NORDAHEAD`  | turn off OS-level read-ahead |
 | `MDB_NOLOCK`     | the caller takes responsibility for locking |
 
 `MDB_RDONLY` can only be set at `open` time. Calling `set!(env,
@@ -64,9 +63,8 @@ LMDB.MDB_RDONLY)` on an open env will return `EINVAL`.
 
 ## Sizing the map
 
-`mapsize` is a *virtual* limit on the env's address space, not the
-on-disk size. Pick a generous power of two (say, 1 GiB or 8 GiB) up
-front. The on-disk file grows incrementally as data is written.
+`mapsize` reserves virtual address space and limits database growth; it is not
+the initial on-disk size. Choose a value large enough for expected growth.
 
 LMDB 1.0 also lets you choose the DB page size with `pagesize`. The
 default is the OS page size; larger values can allow larger keys and
@@ -74,9 +72,9 @@ default is the OS page size; larger values can allow larger keys and
 actual page size and `env[:KeySize]` reports the corresponding maximum
 key size.
 
-If a write txn would exceed `mapsize`, LMDB returns `MDB_MAP_FULL`. To
-recover, close the env, raise `mapsize`, and reopen. The database
-itself does not need rewriting.
+If a write transaction exceeds `mapsize`, LMDB returns `MDB_MAP_FULL`.
+Increase the map with no active transactions; reopening the environment is
+not required.
 
 ## Inspection
 
@@ -107,15 +105,12 @@ pipe or socket.
 
 ## Reader management
 
-Each open read transaction occupies one reader slot. If a process
-crashes without releasing its txns, the slots remain reserved until the
-env is closed. `reader_check` reaps such stale slots and returns the
-count of slots cleared:
+Each open read transaction uses a reader slot. `reader_check` clears slots
+left by dead processes and returns the number cleared:
 
 ```julia
 n = reader_check(env)
 @info "reaped $n stale readers"
 ```
 
-`reader_list(env)` returns a human-readable dump of every active slot
-(PID, thread, txn id) for diagnosing reader-table contention.
+`reader_list(env)` returns LMDB's human-readable reader-table dump.

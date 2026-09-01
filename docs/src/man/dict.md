@@ -23,7 +23,7 @@ Constructor keyword arguments:
 | kwarg | default | meaning |
 |-------|---------|---------|
 | `readonly` | `false` | open with `MDB_RDONLY` |
-| `rdahead` | `false` | unset `MDB_NORDAHEAD` (LMDB's default is to read-ahead; LMDB.jl turns it off because cold-page workloads pay for it) |
+| `rdahead` | `false` | enable OS read-ahead instead of setting `MDB_NORDAHEAD` |
 | `mapsize` | LMDB default (10 MiB) | virtual map size in bytes; the on-disk file may be much smaller |
 | `readers` | LMDB default | max concurrent reader slots |
 | `dbs` | LMDB default | max named sub-databases |
@@ -35,10 +35,9 @@ tasks.
 
 ## Storing and retrieving
 
-Anything that round-trips through the package's `MDB_val` glue and
-[`MDBValueIO`](@ref LMDB.MDBValueIO) works as a value type: `String`,
-`Vector{T}` for any bitstype `T`, and any bitstype scalar (`Int`,
-`Float32`, `(Int, UInt32)` `Tuple`, …).
+Strings, contiguous arrays of bitstypes, and bitstype scalars can be stored
+directly. Reads support `String`, vectors of bitstypes, and Base's fixed-width
+primitive types. Define `Base.read(io::IO, ::Type{T})` for another type.
 
 ```julia
 d = LMDBDict{String, Float64}("/tmp/scores")
@@ -87,7 +86,7 @@ empty!(d)              # drops every entry
 `delete!` matches `Base.delete!`'s "if any" contract: it returns `d` and
 silently no-ops when the key isn't present.
 
-Generic `AbstractDict` operations all kick in for free:
+Bulk mutation methods use one LMDB write transaction:
 
 ```julia
 merge!(d, Dict("a" => 1, "b" => 2))
@@ -127,8 +126,7 @@ LMDB.list_dirs(d, prefix = "")        # ["other", "users/"]
 LMDB.list_dirs(d, prefix = "users/")  # ["users/1/", "users/2/"]
 ```
 
-`LMDB.valuesize(d; prefix)` sums byte sizes. Useful for quick storage
-audits without `stat`.
+`LMDB.valuesize(d; prefix)` sums the stored value sizes for matching keys.
 
 ## When to drop down
 
@@ -141,4 +139,4 @@ Reach for the explicit Julia wrappers (next chapters) when:
   the default unnamed DB),
 - you're using `MDB_DUPSORT` for multiple values per key (see
   [Duplicate-sort databases](@ref)),
-- or you want zero-copy reads against the mmap.
+- or you need direct access to LMDB-owned values.

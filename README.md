@@ -44,7 +44,7 @@ d["beta/x"] = Float32[10, 11]
 d["beta/y"] = Float32[12, 13]
 
 @show d["alpha"]
-@show haskey(d, "alpha"), haskey(d, "missing")  # missing throws KeyError
+@show haskey(d, "alpha"), haskey(d, "missing")  # (true, false)
 @show length(d)                                  # 3
 for (k, v) in d
     @show k, v
@@ -64,7 +64,7 @@ LMDB.Environment("/tmp/mydb"; mapsize = 1<<30, maxreaders = 510,
     LMDB.Transaction(env) do txn                       # auto-commits/aborts
         LMDB.Database(txn) do dbi
             put!(txn, dbi, "k1", "hello")
-            put!(txn, dbi, "k2", [1.0, 2.0, 3.0])
+            put!(txn, dbi, "k2", "world")
 
             @show LMDB.get(txn, dbi, "k1", String, nothing)
             @show LMDB.get(txn, dbi, "missing", String, "default")
@@ -72,7 +72,7 @@ LMDB.Environment("/tmp/mydb"; mapsize = 1<<30, maxreaders = 510,
         end
     end
 
-    # Cursor walk over the LMDB-owned mmap (zero-copy access).
+    # Decode every key and value visited by the cursor.
     LMDB.Transaction(env; flags = LMDB.MDB_RDONLY) do txn
         LMDB.Database(txn) do dbi
             LMDB.Cursor(txn, dbi) do cur
@@ -85,9 +85,9 @@ LMDB.Environment("/tmp/mydb"; mapsize = 1<<30, maxreaders = 510,
 end
 ```
 
-The package decodes `String`, `Vector{T}` for any bitstype `T`, and the
-primitive numeric types out of the box. To plug in a custom representation,
-define a `Base.read(io::IO, ::Type{T})` method; it will be picked up by
+The package decodes `String`, `Vector{T}` for any bitstype `T`, and Base's
+fixed-width primitive reads. To add a representation, define
+`Base.read(io::IO, ::Type{T})`; it will be used by
 `LMDB.get`, `LMDB.walk(f, cur, K, V)`, and the cursor accessors
 `LMDB.key`/`LMDB.value`/`LMDB.item`.
 
@@ -104,7 +104,7 @@ end
 ### C API bindings
 
 The bindings are `LMDB.mdb_*`; constants like `LMDB.MDB_NOTLS` and
-`LMDB.MDB_NOTFOUND` are public-but-unexported. Status-returning
+`LMDB.MDB_NOTFOUND` are available under the `LMDB` prefix. Status-returning
 bindings have an auto-throwing default and an `unchecked_*` companion:
 
 ```julia
@@ -119,10 +119,11 @@ LMDB.mdb_env_open(env, "/tmp/mydb",
                   LMDB.MDB_NOTLS | LMDB.MDB_NORDAHEAD,
                   LMDB.mode_t(0o644))
 
-# Inspect the raw status code (e.g. for MDB_NOTFOUND):
-ret = LMDB.unchecked_mdb_get(txn, dbi, key, val_ref)
-ret == LMDB.MDB_NOTFOUND && return nothing
-ret == 0 || throw(LMDB.LMDBError(ret))
+# Inspect a raw status code:
+ret = LMDB.unchecked_mdb_env_open(env, "/path/that/does/not/exist",
+                                  Cuint(0), LMDB.mode_t(0o644))
+ret == 0 || @show LMDB.LMDBError(ret)
+LMDB.mdb_env_close(env)
 ```
 
 ## Reference

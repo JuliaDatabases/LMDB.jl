@@ -1,6 +1,5 @@
 @testset "Environment" begin
 
-# Defaults and getindex on a freshly constructed env.
 mktempdir() do dir
     env = LMDB.Environment(dir)
     try
@@ -10,29 +9,24 @@ mktempdir() do dir
         @test env[:KeySize] > 0
         @test env[:Flags] == 0
 
-        # Manipulate flags via LMDB.set!/LMDB.unset! after open.
         @test !LMDB.isflagset(env[:Flags], Cuint(LMDB.MDB_NOSYNC))
         LMDB.set!(env, LMDB.MDB_NOSYNC)
         @test LMDB.isflagset(env[:Flags], Cuint(LMDB.MDB_NOSYNC))
         LMDB.unset!(env, LMDB.MDB_NOSYNC)
         @test !LMDB.isflagset(env[:Flags], Cuint(LMDB.MDB_NOSYNC))
 
-        # LMDB.set!/LMDB.unset! return env for chaining.
         @test LMDB.set!(env, LMDB.MDB_NOSYNC) === env
         @test LMDB.unset!(env, LMDB.MDB_NOSYNC) === env
 
-        # env[:Flags] setindex! used to fall through to a warning (#24).
+        # Regression for #24: setting :Flags must not fall through.
         @test !LMDB.isflagset(env[:Flags], Cuint(LMDB.MDB_NOSYNC))
         env[:Flags] = LMDB.MDB_NOSYNC
         @test LMDB.isflagset(env[:Flags], Cuint(LMDB.MDB_NOSYNC))
         LMDB.unset!(env, LMDB.MDB_NOSYNC)
 
-        # Unknown options error instead of silently warning + returning bogus values.
         @test_throws ArgumentError env[:Bogus] = 1
         @test_throws ArgumentError env[:Bogus]
 
-        # stat(env) returns the main DB's stats; before any puts, there are
-        # no entries and a positive page size.
         s = stat(env)
         @test s isa NamedTuple
         @test s.psize > 0
@@ -43,7 +37,6 @@ mktempdir() do dir
     end
 end
 
-# High-level LMDB.Environment(path; ...) constructor.
 mktempdir() do dir
     big = Csize_t(8) * 1024^3
     env = LMDB.Environment(dir; mapsize = big, pagesize = 8192,
@@ -60,11 +53,10 @@ mktempdir() do dir
         close(env)
     end
 
-    # On failure during open, the LMDB.Environment ctor closes the partial env.
+    # The constructor must close the allocated handle if opening fails.
     @test_throws LMDBError LMDB.Environment(joinpath(dir, "definitely_does_not_exist"))
 end
 
-# do-block form: env is closed on the way out, even if the body throws.
 mktempdir() do dir
     closed_env = LMDB.Environment(dir) do env
         @test isopen(env)
@@ -100,9 +92,7 @@ mktempdir() do dir
     end
 end
 
-# LMDB.Cursor finalizer: an abandoned cursor must be cleaned up so its
-# parent txn can commit. (LMDB requires cursors on a write txn to be
-# closed before commit; for read txns it's safer too.)
+# Finalizing a cursor must not invalidate its transaction.
 mktempdir() do dir
     env = LMDB.Environment(dir)
     try
@@ -111,7 +101,6 @@ mktempdir() do dir
             cur = LMDB.Cursor(txn, dbi)
             @test isopen(cur)
             finalize(cur)
-            # If the finalizer ran, we can still use the txn.
             LMDB.put!(txn, dbi, "k", "v")
         end
     finally
@@ -119,11 +108,7 @@ mktempdir() do dir
     end
 end
 
-# LMDB.Cursor finalizer is safe even after its parent txn has been
-# explicitly committed: write-txn cursors are freed by the txn's
-# commit per `lmdb.h`, so `mdb_cursor_close` afterwards would be UB.
-# The defensive check in `close(::LMDB.Cursor)` skips the LMDB call once
-# the parent txn handle is gone.
+# Transactions close their cursors before ending.
 mktempdir() do dir
     env = LMDB.Environment(dir)
     try
@@ -131,25 +116,72 @@ mktempdir() do dir
         dbi = LMDB.Database(txn)
         cur = LMDB.Cursor(txn, dbi)
         LMDB.put!(txn, dbi, "k", "v")
-        LMDB.commit(txn)        # invalidates write-txn cursors
+        LMDB.commit(txn)
         @test !isopen(txn)
-        finalize(cur)           # finalizer should be a safe no-op
+        @test !isopen(cur)
+        finalize(cur)
     finally
         close(env)
     end
 end
 
-# close(env) must abort any still-open child txns before calling
-# `mdb_env_close`; otherwise LMDB corrupts shared state and a later
-# env-open in the same process crashes inside `mdb_txn_renew0`. The
-# subsequent LMDB.Environment is the canary.
+# Work around LMDB's post-transaction cursor-close use-after-free.
+mktempdir() do dir
+    LMDB.Environment(dir) do env
+        txn = LMDB.Transaction(env; flags = LMDB.MDB_RDONLY)
+        dbi = LMDB.Database(txn)
+        cur = LMDB.Cursor(txn, dbi)
+        LMDB.commit(txn)
+        @test !isopen(txn)
+        @test !isopen(cur)
+        close(cur)
+    end
+end
+
+mktempdir() do dir
+    LMDB.Environment(dir) do env
+        txn = LMDB.Transaction(env; flags = LMDB.MDB_RDONLY)
+        dbi = LMDB.Database(txn)
+        cur = LMDB.Cursor(txn, dbi)
+        LMDB.abort(txn)
+        @test !isopen(txn)
+        @test !isopen(cur)
+    end
+end
+
+# Renewing a cursor transfers cleanup responsibility to the new transaction.
+mktempdir() do dir
+    LMDB.Environment(dir) do env
+        LMDB.Transaction(env) do txn
+            dbi = LMDB.Database(txn)
+            LMDB.put!(txn, dbi, "k", "v")
+        end
+        txn1 = LMDB.Transaction(env; flags = LMDB.MDB_RDONLY)
+        dbi = LMDB.Database(txn1)
+        cur = LMDB.Cursor(txn1, dbi)
+        reset(txn1)
+        txn2 = LMDB.Transaction(env; flags = LMDB.MDB_RDONLY)
+        LMDB.renew(txn2, cur)
+        @test LMDB.transaction(cur) === txn2
+        LMDB.abort(txn1)
+        @test isopen(cur)
+        @test LMDB.seek!(cur, String) == "k"
+        LMDB.commit(txn2)
+        @test !isopen(cur)
+    end
+end
+
+# LMDB requires child transactions to end before `mdb_env_close`.
 mktempdir() do dir
     env = LMDB.Environment(dir)
     txn = LMDB.Transaction(env)
+    dbi = LMDB.Database(txn)
+    cur = LMDB.Cursor(txn, dbi)
     @test isopen(txn)
-    close(env)                  # would corrupt LMDB state without txn tracking
+    close(env)
     @test !isopen(txn)
-    finalize(txn)               # finalizer should also be a safe no-op
+    @test !isopen(cur)
+    finalize(txn)
 end
 mktempdir() do dir
     env = LMDB.Environment(dir; mapsize = Csize_t(8) * 1024^3, maxreaders = 42, maxdbs = 4)
@@ -161,7 +193,6 @@ mktempdir() do dir
     close(env)
 end
 
-# Parent refs: env(txn) and transaction(cur) return the actual parents.
 mktempdir() do dir
     env = LMDB.Environment(dir)
     try
@@ -177,18 +208,14 @@ mktempdir() do dir
     end
 end
 
-# LMDB.reader_check / LMDB.reader_list / copy
 mktempdir() do dir
     LMDB.Environment(dir) do env
-        # Fresh env: no stale readers.
         @test LMDB.reader_check(env) == 0
 
-        # LMDB.reader_list always emits a header line listing slot fields.
         txt = LMDB.reader_list(env)
         @test txt isa String
         @test !isempty(txt)
 
-        # Round-trip a copy.
         LMDB.Transaction(env) do txn
             LMDB.Database(txn) do dbi
                 LMDB.put!(txn, dbi, "k", "v")

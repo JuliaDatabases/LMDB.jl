@@ -4,8 +4,7 @@
 Memory-Mapped Database.*
 
 LMDB is an embedded, memory-mapped, ACID key-value store developed by
-Symas for OpenLDAP. It persists to disk while reading at near in-memory
-speeds, limited only by the size of the virtual address space.
+Symas for OpenLDAP.
 
 LMDB 1.0 changed the on-disk file format. Databases created by LMDB 0.9
 must be exported with a 0.9 `mdb_dump` and imported with a 1.0
@@ -25,10 +24,8 @@ LMDB.jl exposes the same database through three surfaces:
 | Julia wrappers | `Environment`, `Transaction`, `Database`, `Cursor` | When you want explicit transactions and cursors with Julia-shaped wrappers. |
 | C API | `LMDB.mdb_*`, `LMDB.MDB_*` | Raw `ccall` bindings and status-code constants, for custom data layouts or when you want to skip allocations on hot paths. |
 
-`MDBValue`, `MDBArg`, and the [`MDBValueIO`](@ref LMDB.MDBValueIO)
-type sit between the C API and the Julia wrappers. `MDBValueIO` is an
-`IO` view over `MDB_val`; defining `Base.read(io, T)` on it is how you
-teach the typed reads about a custom value type.
+`MDBArg` and [`MDBValueIO`](@ref LMDB.MDBValueIO) bridge Julia values and
+`MDB_val`. Define `Base.read(io::IO, ::Type{T})` to add a typed decoder.
 
 The Usage section starts simple and gets more involved. [Essentials](@ref)
 has a working example, [Dictionary interface](@ref) covers `LMDBDict`,
