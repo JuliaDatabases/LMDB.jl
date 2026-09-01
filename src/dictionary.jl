@@ -5,9 +5,9 @@ export LMDBDict
     LMDBDict{K,V}(path; readonly, rdahead, mapsize, readers, dbs)
 
 A persistent `AbstractDict{K,V}` backed by a single LMDB environment
-plus its default Database. Keys and values are encoded as raw bytes;
-`String`, `Vector{T}` (where `T` is bitstype), and any bitstype scalar
-all work.
+and its main database. Keys and values are stored as raw bytes. Built-in
+decoders support `String`, vectors of bitstypes, and Base's fixed-width
+primitive reads; define `Base.read(io::IO, ::Type{T})` for other types.
 
 For prefix-scoped scans (e.g. hierarchical "directory" key schemes),
 see `LMDB.scan`, `LMDB.scan_keys`, `LMDB.scan_values`, and `LMDB.list_dirs`.
@@ -28,10 +28,8 @@ function LMDBDict{K,V}(path::String; readonly = false, rdahead = false,
                        mapsize::Union{Integer,Nothing} = nothing,
                        readers::Union{Integer,Nothing} = nothing,
                        dbs::Union{Integer,Nothing} = nothing) where {K,V}
-    # MDB_NOTLS: drop LMDB's default thread-local reader slots, so a single
-    # thread can hold multiple concurrent read txns. Required for any
-    # interleaved read (e.g. `length(d)` mid-iteration) and for read txns
-    # in a multi-task setting. Same default as py-lmdb.
+    # Tie reader slots to transactions, allowing interleaved reads on one thread
+    # and moving a read transaction between threads.
     envflags = Cuint(MDB_NOTLS)
     rdahead || (envflags |= Cuint(MDB_NORDAHEAD))
     readonly && (envflags |= Cuint(MDB_RDONLY))
@@ -90,11 +88,8 @@ end
 
 # --- AbstractDict interface ---
 
-# Iteration: state is `(txn, cur)` opened on the first iterate (LLVM-style;
-# the cursor's internal position is the moral equivalent of LLVM's
-# `LLVMGetNextInstruction` next-pointer). On normal completion the txn is
-# committed and the cursor closed; on early break/throw, Cursor's and
-# Transaction's finalizers reclaim them.
+# Iteration state owns a read transaction and cursor. Exhaustion closes both;
+# early termination leaves cleanup to their finalizers.
 function Base.iterate(d::LMDBDict)
     txn = Transaction(d.env; flags = Cuint(MDB_RDONLY))
     cur = Cursor(txn, d.dbi)
@@ -202,7 +197,7 @@ function Base.pop!(d::LMDBDict{K,V}, k, default) where {K,V}
     end
 end
 
-# `pop!(d)` without a key: pops the first entry, mirroring `Base.pop!(::Dict)`.
+# LMDB's ordering makes the no-key form pop the first key.
 function Base.pop!(d::LMDBDict{K,V}) where {K,V}
     txn_dbi_do(d) do txn, dbi
         Cursor(txn, dbi) do cur
@@ -222,25 +217,15 @@ function Base.empty!(d::LMDBDict)
     return d
 end
 
-# AbstractDict's default implementations of `keys`, `values`, `pairs`,
-# `==`, `hash`, `in(::Pair, d)` etc. all kick in for free now that
-# `iterate` and `length` are defined.
-
-# An LMDBDict needs an on-disk directory to live in, so there's no
-# meaningful zero-argument `empty(d)` (or `copy(d)`, which `Base`
-# implements as `merge!(empty(d), d)`). Refuse with an explicit error
-# so users reach for `Dict(d)` for an in-memory snapshot or
-# `copy(d.env, path)` for an on-disk clone.
+# A new LMDBDict needs a path; use `Dict(d)` for a memory snapshot or
+# `copy(d.env, path)` for an on-disk copy.
 const _NO_EMPTY_LMDBDICT =
     "LMDBDict has no path-less empty form; use Dict(d) for an in-memory " *
     "snapshot, or copy(d.env, path) for an on-disk clone"
 Base.empty(::LMDBDict, ::Type, ::Type) = throw(ArgumentError(_NO_EMPTY_LMDBDICT))
 Base.copy(::LMDBDict) = throw(ArgumentError(_NO_EMPTY_LMDBDICT))
 
-# Override the bulk-update fallbacks so they land in a single LMDB write
-# txn. AbstractDict's default `merge!` / `mergewith!` / `filter!` call
-# `d[k]=v` / `delete!(d,k)` in a loop, and each of those opens its own
-# write txn (and commit/fsync) per pair.
+# Batch bulk updates in one write transaction instead of one per entry.
 function Base.merge!(d::LMDBDict{K,V}, others::AbstractDict...) where {K,V}
     txn_dbi_do(d) do txn, dbi
         for other in others, (k, v) in other
@@ -303,7 +288,7 @@ end
 """
     scan_keys(d::LMDBDict; prefix=UInt8[]) -> Vector{K}
 
-Eagerly collect every key whose key starts with `prefix`.
+Eagerly collect every key that starts with `prefix`.
 """
 function scan_keys(d::LMDBDict{K}; prefix = UInt8[]) where K
     bprefix = Vector{UInt8}(prefix)

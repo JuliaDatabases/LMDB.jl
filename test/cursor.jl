@@ -3,8 +3,7 @@
 key = 10
 val = "key value is "
 
-# Procedural style + block style smoke test, exercising cursor put!/walk
-# round-trip and the parent accessors.
+# Exercise manual and do-block cursor lifecycles.
 mktempdir() do dbname
     env = LMDB.Environment(dbname)
     try
@@ -33,7 +32,6 @@ mktempdir() do dbname
     end
     @test !isopen(env)
 
-    # Block style: parent accessors return the actual handles, not synthetic ones.
     LMDB.Environment(dbname) do env
         LMDB.Transaction(env) do txn
             LMDB.Database(txn) do dbi
@@ -49,7 +47,6 @@ mktempdir() do dbname
     end
 end
 
-# LMDB.Cursor positioning + walk primitives.
 mktempdir() do dir
     LMDB.Environment(dir) do env
         LMDB.Transaction(env) do txn
@@ -77,36 +74,30 @@ mktempdir() do dir
                     @test LMDB.seek_range!(cur, "ab", String) == "b"
                     @test LMDB.seek_range!(cur, "z", String) === nothing
 
-                    # walk over everything
                     ks = String[]
                     LMDB.walk(cur) do k_ref, _
                         push!(ks, read(LMDB.MDBValueIO(k_ref[]), String))
                     end
                     @test ks == ["a", "b", "c"]
 
-                    # walk from a starting key
                     ks2 = String[]
                     LMDB.walk(cur; from="b") do k_ref, _
                         push!(ks2, read(LMDB.MDBValueIO(k_ref[]), String))
                     end
                     @test ks2 == ["b", "c"]
 
-                    # walk from a key past the last entry — no callbacks.
                     ks3 = String[]
                     LMDB.walk(cur; from="z") do k_ref, _
                         push!(ks3, read(LMDB.MDBValueIO(k_ref[]), String))
                     end
                     @test isempty(ks3)
 
-                    # typed walk: each ref decoded via read(MDBValueIO, K)
-                    # / read(MDBValueIO, V).
                     kv = Pair{String, String}[]
                     LMDB.walk(cur, String, String) do k, v
                         push!(kv, k => v)
                     end
                     @test kv == ["a" => "1", "b" => "2", "c" => "3"]
 
-                    # typed walk respects the false-stops contract.
                     seen = Pair{String, String}[]
                     LMDB.walk(cur, String, String) do k, v
                         push!(seen, k => v)
@@ -119,7 +110,6 @@ mktempdir() do dir
     end
 end
 
-# seek!/next! on an empty database returns nothing.
 mktempdir() do dir
     LMDB.Environment(dir) do env
         LMDB.Transaction(env) do txn
@@ -141,10 +131,7 @@ mktempdir() do dir
     end
 end
 
-# LMDB.Cursor.delete!: removes the entry the cursor is on; LMDB advances to
-# the next entry. Throws on an unpositioned cursor (EINVAL), unlike the
-# txn-based `delete!(txn, dbi, key)` which is Bool-returning on
-# MDB_NOTFOUND.
+# Cursor deletion reports `EINVAL` rather than `MDB_NOTFOUND` when unpositioned.
 mktempdir() do dir
     LMDB.Environment(dir) do env
         LMDB.Transaction(env) do txn
@@ -154,9 +141,9 @@ mktempdir() do dir
 
                 LMDB.Cursor(txn, dbi) do cur
                     @test LMDB.seek!(cur, "a", String) == "a"
-                    LMDB.delete!(cur)             # removes "a", cursor now on "b"
-                    LMDB.delete!(cur)             # removes "b"
-                    @test_throws LMDBError LMDB.delete!(cur)  # no live entry
+                    LMDB.delete!(cur)
+                    LMDB.delete!(cur)
+                    @test_throws LMDBError LMDB.delete!(cur)
                 end
                 @test get(txn, dbi, "a", String, nothing) === nothing
                 @test get(txn, dbi, "b", String, nothing) === nothing

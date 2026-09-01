@@ -3,7 +3,6 @@ using Test, LMDB
 @testset "LMDB" verbose=true begin
     @test LMDB.version() >= v"1.0.0"
 
-    # LMDBError
     ex = LMDBError(Cint(0))
     @test_throws LMDBError throw(ex)
     @test ex.code == 0

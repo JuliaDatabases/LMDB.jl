@@ -1,18 +1,12 @@
 @public Environment, sync, set!, unset!, info, path,
         reader_check, reader_list
 
-"""
-A DB environment supports multiple databases, all residing in the same shared-memory map.
-
-The handle is closed when the wrapper is garbage-collected, unless `close`
-was already called explicitly. Closing is idempotent.
-"""
+"""An LMDB environment containing one or more databases."""
 mutable struct Environment
     handle::Ptr{MDB_env}
     path::String
-    # Live transactions, tracked weakly so they remain GC-able. `close`
-    # walks this list to abort any still-open txn before calling
-    # `mdb_env_close`; otherwise LMDB corrupts state shared across envs.
+    # LMDB requires transactions to end before their environment is closed.
+    # Weak references let transactions remain eligible for finalization.
     txns::Vector{WeakRef}
 end
 
@@ -21,7 +15,7 @@ Base.unsafe_convert(::Type{Ptr{MDB_env}}, e::Environment) = e.handle
 "Return the path that was used to open the environment."
 path(env::Environment) = env.path
 
-"Check if environment is open"
+"Return whether the environment is open."
 isopen(env::Environment) = env.handle != C_NULL
 
 """
@@ -29,15 +23,9 @@ isopen(env::Environment) = env.handle != C_NULL
                 maxreaders=nothing, maxdbs=nothing, flags=0,
                 mode=0o755) -> Environment
 
-Open the LMDB environment at `path`. The directory must already exist
-and be writable. The configuration kwargs go through
-`mdb_env_set_mapsize`, `mdb_env_set_pagesize`,
-`mdb_env_set_maxreaders`, and `mdb_env_set_maxdbs`; `flags` is
-forwarded to `mdb_env_open`. If anything fails along the way, the
-partially-built env is closed before rethrowing.
-
-Matches py-lmdb's `Environment(path, **kwargs)` and lmdb-rs's
-`EnvironmentBuilder.open(path)`.
+Create and open an LMDB environment. `path` normally names an existing
+directory; with `MDB_NOSUBDIR`, it names the data file. The optional limits
+and page size are set before `mdb_env_open` is called.
 """
 function Environment(path::AbstractString; mapsize::Union{Integer,Nothing} = nothing,
                      pagesize::Union{Integer,Nothing} = nothing,
@@ -66,8 +54,8 @@ end
 """
     Environment(f::Function, path::AbstractString; kwargs...) -> result
 
-`do`-block form. Opens the env, runs `f(env)`, closes it on the way
-out, even if `f` throws. Returns whatever `f` returns.
+Open the environment, call `f`, and close it afterward, including when `f`
+throws. Return the result of `f`.
 """
 function Environment(f::Function, path::AbstractString; kwargs...)
     env = Environment(path; kwargs...)
@@ -78,17 +66,10 @@ function Environment(f::Function, path::AbstractString; kwargs...)
     end
 end
 
-"""Close the environment and release the memory map.
-
-Idempotent: calling `close` on an already-closed `Environment` is a
-silent no-op, matching the convention of `close(::IO)`. That makes
-finalizers safe to run after an explicit close.
-"""
+"""Close the environment and release its memory map. Repeated calls are no-ops."""
 function close(env::Environment)
     env.handle == C_NULL && return nothing
-    # LMDB requires all transactions to be closed before `mdb_env_close`;
-    # otherwise it leaves shared lockfile/heap state corrupted and the
-    # next env-open in the process can crash inside `mdb_txn_renew0`.
+    # End tracked transactions before invalidating all child handles.
     for wr in env.txns
         t = wr.value
         t isa Transaction && t.handle != C_NULL && abort(t)
@@ -100,7 +81,7 @@ function close(env::Environment)
     return nothing
 end
 
-"""Flush the data buffers to disk"""
+"""Flush the environment's data buffers to disk."""
 function sync(env::Environment, force::Bool = false)
     fval = force ? 1 : 0
     mdb_env_sync(env, fval)
@@ -120,19 +101,10 @@ function unset!(env::Environment, flag::Integer)
 end
 
 
-"""Set environment flags and parameters
+"""
+    env[option] = value
 
-`setindex!` accepts following parameters:
-* `env` db environment object
-* `option` symbol which indicates parameter. Currently supported parameters:
-    * Flags
-    * Readers
-    * MapSize
-    * PageSize
-    * DBs
-* `value` parameter value
-
-**Note:** Consult LMDB documentation for particular values of environment parameters and flags.
+Set `:Flags`, `:Readers`, `:MapSize`, `:PageSize`, or `:DBs`.
 """
 function setindex!(env::Environment, val::Integer, option::Symbol)
     if option == :Flags
@@ -140,8 +112,7 @@ function setindex!(env::Environment, val::Integer, option::Symbol)
     elseif option == :Readers
         mdb_env_set_maxreaders(env, Cuint(val))
     elseif option == :MapSize
-        # MDB_env_set_mapsize takes a size_t; using Cuint truncates >4 GiB
-        # maps on 64-bit platforms (issue #38, PRs #37 / #40).
+        # The C API takes `size_t`; `Cuint` would truncate maps larger than 4 GiB.
         mdb_env_set_mapsize(env, mdb_size_t(val))
     elseif option == :PageSize
         mdb_env_set_pagesize(env, Cint(val))
@@ -152,16 +123,10 @@ function setindex!(env::Environment, val::Integer, option::Symbol)
     end
 end
 
-"""Get environment flags and parameters
+"""
+    env[option]
 
-`getindex` accepts following parameters:
-* `env` db environment object
-* `option` symbol which indicates parameter. Currently supported parameters:
-    * Flags
-    * Readers
-    * KeySize
-
-**Note:** Consult LMDB documentation for particular values of environment parameters and flags.
+Return `:Flags`, `:Readers`, or `:KeySize`.
 """
 function getindex(env::Environment, option::Symbol)
     value = Ref{Cuint}(0)
@@ -187,10 +152,10 @@ Return a `NamedTuple` describing the env's mmap and reader slots:
 |--------------|----------------------------------------------|
 | `mapaddr`    | address the mmap is fixed at, or `C_NULL`    |
 | `mapsize`    | configured map size in bytes                 |
-| `last_pgno`  | high-water-mark page number (monotonic)      |
+| `last_pgno`  | id of the last used page                     |
 | `last_txnid` | id of the most recent committed txn          |
 | `maxreaders` | max concurrent reader slots                  |
-| `numreaders` | live reader slots in use                     |
+| `numreaders` | maximum reader slots used                    |
 
 Returns a zero-filled NamedTuple if the env is already closed.
 """
@@ -224,10 +189,8 @@ end
 """
     copy(env::Environment, path::AbstractString; compact=false)
 
-Copy the LMDB environment to a directory at `path`. With `compact=true`,
-omit free-space pages so the destination is approximately as small as the
-live data set. The destination directory must already exist (and on most
-filesystems must be empty).
+Copy the LMDB environment to an existing empty directory at `path`. With
+`compact=true`, omit free pages and renumber the copied pages sequentially.
 
 Wraps `mdb_env_copy` / `mdb_env_copy2`.
 """
@@ -260,10 +223,7 @@ end
 """
     reader_check(env::Environment) -> Int
 
-Check for stale readers (transactions started by processes that have died
-without releasing them) and reap their slots. Returns the number of slots
-that were cleared. Useful in long-running services to recover from
-abnormally-terminated readers.
+Clear reader slots left by dead processes and return the number cleared.
 
 Wraps `mdb_reader_check`.
 """
@@ -273,8 +233,7 @@ function reader_check(env::Environment)
     return Int(dead[])
 end
 
-# Callback for `mdb_reader_list`: appends the message to the IOBuffer
-# referenced through `ctx`. Returns 0 to continue, non-zero to stop.
+# Append each reader-table line to the `IOBuffer` passed as `ctx`.
 function reader_list_cb(msg::Ptr{Cchar}, ctx::Ptr{Cvoid})::Cint
     io = unsafe_pointer_to_objref(ctx)::IOBuffer
     write(io, unsafe_string(msg))
@@ -284,9 +243,7 @@ end
 """
     reader_list(env::Environment) -> String
 
-Return a human-readable listing of the environment's reader slots: one
-header line plus one line per active reader (PID, thread ID, transaction
-ID). Useful for diagnosing reader-table contention.
+Return LMDB's human-readable reader-table listing.
 
 Wraps `mdb_reader_list`.
 """

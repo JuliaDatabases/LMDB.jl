@@ -5,33 +5,33 @@
         walk, transaction, database, key, value, item
 
 """
-A handle to a cursor structure for navigating through a database.
-
-A `Cursor` keeps references to its parent `Transaction` and `Database`, both
-to expose them via `transaction(cur)` / `database(cur)` and to keep the
-txn alive under GC. The cursor's finalizer closes any still-open handle.
+A cursor for navigating a database. It retains its transaction and database,
+and closes a live handle when finalized.
 """
 mutable struct Cursor
     handle::Ptr{MDB_cursor}
     txn::Transaction
     dbi::Database
+    readonly::Bool
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_cursor}}, c::Cursor) = c.handle
 
-"Check if cursor is open"
+"Return whether the cursor handle is open."
 isopen(cur::Cursor) = cur.handle != C_NULL
 
 """
     Cursor(txn::Transaction, dbi::Database) -> Cursor
 
-Open a cursor over `dbi` inside `txn`. The cursor is freed by its
-finalizer if `close` isn't called explicitly.
+Open a cursor over `dbi` in `txn`.
 """
 function Cursor(txn::Transaction, dbi::Database)
     cur_ptr_ref = Ref{Ptr{MDB_cursor}}(C_NULL)
     mdb_cursor_open(txn, dbi, cur_ptr_ref)
-    cur = Cursor(cur_ptr_ref[], txn, dbi)
+    txn_flags = Ref{Cuint}()
+    mdb_txn_flags(txn, txn_flags)
+    cur = Cursor(cur_ptr_ref[], txn, dbi,
+                 isflagset(txn_flags[], Cuint(MDB_RDONLY)))
     finalizer(close, cur)
     return cur
 end
@@ -39,8 +39,8 @@ end
 """
     Cursor(f::Function, txn::Transaction, dbi::Database) -> result
 
-`do`-block form: open a cursor, run `f(cur)`, close on the way out.
-Returns whatever `f` returns.
+Open a cursor, call `f`, and close the cursor afterward. Return the result of
+`f`.
 """
 function Cursor(f::Function, txn::Transaction, dbi::Database)
     cur = Cursor(txn, dbi)
@@ -54,18 +54,16 @@ end
 "Close a cursor. Idempotent."
 function close(cur::Cursor)
     cur.handle == C_NULL && return
-    # Per `lmdb.h`, write-txn cursors are freed by the parent txn's
-    # commit/abort, and `mdb_cursor_close` afterwards is undefined. For
-    # read-txn cursors, the txn handle is required to still be valid.
-    # If the parent txn is already finalised in the wrapper, drop the
-    # handle without calling into LMDB.
-    isopen(cur.txn) || (cur.handle = C_NULL; return)
-    mdb_cursor_close(cur)
+    # Write transactions free their cursors. Read cursors remain allocated after
+    # a transaction ends and must be closed before the environment.
+    if isopen(cur.txn) || (cur.readonly && isopen(cur.txn.env))
+        mdb_cursor_close(cur)
+    end
     cur.handle = C_NULL
     return
 end
 
-"Renew a cursor"
+"Renew a read-only cursor for use with `txn`."
 function renew(txn::Transaction, cur::Cursor)
     mdb_cursor_renew(txn, cur)
 end
@@ -80,20 +78,15 @@ Base.show(io::IO, cur::Cursor) =
     print(io, "Cursor(", isopen(cur) ? "open" : "closed", ")")
 
 
-# Fill `dst` with the MDB_val that the cconvert/unsafe_convert ladder
-# in `common.jl` would build for `k`. `k`'s storage must outlive the
-# eventual ccall (use `GC.@preserve`); the pointer baked into `dst`
-# aliases its data.
+# Materialize an input `MDB_val`; the returned carrier must be preserved while
+# `dst` is passed to C.
 @inline function fill_mdbval!(dst::Ref{MDB_val}, k)
-    arg = Base.cconvert(Ptr{MDB_val}, k)
-    dst[] = unsafe_load(Base.unsafe_convert(Ptr{MDB_val}, arg))
+    arg = Base.cconvert(Ref{MDB_val}, k)
+    dst[] = unsafe_load(Base.unsafe_convert(Ref{MDB_val}, arg))
     return arg
 end
 
-# Position the cursor with `op`. Returns `true` on success, `false` on
-# `MDB_NOTFOUND`. Throws on other errors. `key_ref` is used both to feed
-# the search key in (for SET_KEY / SET_RANGE) and to receive the matched
-# key on the way out.
+# Return false for `MDB_NOTFOUND`; otherwise update the cursor or throw.
 @inline function cursor_seek!(cur::Cursor, key_ref::Ref{MDB_val},
                                val_ref::Ref{MDB_val}, op::MDB_cursor_op,
                                searchkey)
@@ -228,9 +221,8 @@ end
 """
     seek_first_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) -> Union{V,Nothing}
 
-Position at the first duplicate of the cursor's current key. Returns the
-value as `V`, or `nothing` if the current entry has no duplicates. Wraps
-`MDB_FIRST_DUP`. Only meaningful in `MDB_DUPSORT` databases.
+Position at the first value of the current key. Return it as `V`, or `nothing`
+if there is no current key. Only valid for `MDB_DUPSORT` databases.
 """
 function seek_first_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue())
@@ -242,9 +234,8 @@ end
 """
     seek_last_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) -> Union{V,Nothing}
 
-Position at the last duplicate of the cursor's current key. Returns the
-value as `V`, or `nothing` if the current entry has no duplicates. Wraps
-`MDB_LAST_DUP`.
+Position at the last value of the current key. Return it as `V`, or `nothing`
+if there is no current key. Only valid for `MDB_DUPSORT` databases.
 """
 function seek_last_dup!(cur::Cursor, ::Type{V}=Vector{UInt8}) where V
     key_ref = Ref(MDBValue())
@@ -316,10 +307,10 @@ Walk every entry the cursor visits, calling
 starts at the first key (`MDB_FIRST`) when `from === nothing`, otherwise at
 the smallest key `>= from` (`MDB_SET_RANGE`).
 
-Iteration stops when `f` returns `false` (any other return value, including
-`nothing`, continues). Inside `f`, `key_ref[]` and `val_ref[]` point into
-LMDB-owned memory and are valid only for the duration of the surrounding
-transaction; copy out anything you want to retain.
+Iteration stops when `f` returns `false`; any other value continues. The same
+two `Ref`s are reused on each iteration. Consume or copy their contents before
+the callback returns. LMDB also invalidates returned data after an update or
+when the transaction ends.
 """
 function walk(f, cur::Cursor; from = nothing)
     key_ref = Ref(MDBValue())
@@ -332,8 +323,6 @@ function walk(f, cur::Cursor; from = nothing)
                                                           MDB_SET_RANGE)
     end
     while iszero(ret)
-        # Returning `false` from the callback halts iteration; any other
-        # return (including `nothing`) continues.
         f(key_ref, val_ref) === false && return
         ret = unchecked_mdb_cursor_get(cur, key_ref, val_ref, MDB_NEXT)
     end
@@ -344,16 +333,8 @@ end
 """
     walk(f, cur::Cursor, ::Type{K}, ::Type{V}=K; from = nothing)
 
-Typed overload of `walk` mirroring the `get(txn, dbi, key, T, default)` /
-`key(cur, T)` / `seek!(cur, key, T)` shape used elsewhere in the Julia wrappers.
-Decodes each key and value through `read(::MDBValueIO, K)` /
-`read(::MDBValueIO, V)` before passing them to `f(k::K, v::V)`. Same
-stop contract as the raw form: `f` returning `false` halts iteration.
-
-Define a custom `Base.read(io::LMDB.MDBValueIO, ::Type{T})` to control
-what gets decoded (for example, a `(atime, size)` tuple from a framed
-value, or a zero-copy view). This is the iteration counterpart to
-`get(..., T, nothing)`.
+Decode each key and value as `K` and `V` before calling `f`. Returning `false`
+stops iteration. Define `Base.read(io::IO, ::Type{T})` to add a decoder.
 """
 function walk(f, cur::Cursor, ::Type{K}, ::Type{V} = K;
               from = nothing) where {K, V}
@@ -362,10 +343,7 @@ function walk(f, cur::Cursor, ::Type{K}, ::Type{V} = K;
     end
 end
 
-"""Store by cursor.
-
-This function stores key/data pairs into the database. The cursor is positioned at the new item, or on failure usually near it.
-"""
+"""Store `val` at `key` and position the cursor at the stored entry."""
 function put!(cur::Cursor, key, val; flags::Integer = zero(Cuint))
     mdb_cursor_put(cur, key, val, Cuint(flags))
 end
@@ -373,20 +351,16 @@ end
 """
     delete!(cur::Cursor; flags=0)
 
-Delete the entry the cursor is currently positioned at. Throws
-`LMDBError` if the cursor is not on a live entry. LMDB returns `EINVAL`
-rather than `MDB_NOTFOUND`, so the Bool/idempotent shape used by
-`delete!(txn, dbi, key)` doesn't apply here. Position the cursor first
-with `seek!` or `next!` if you need to recover from a missing entry.
-
-After a successful delete, LMDB advances the cursor to the next entry.
+Delete the current key/value pair. An unpositioned cursor produces
+`LMDBError(EINVAL)`. The cursor remains usable; both `MDB_GET_CURRENT` and
+`MDB_NEXT` select the following record after deletion.
 """
 function delete!(cur::Cursor; flags::Integer = zero(Cuint))
     mdb_cursor_del(cur, Cuint(flags))
     return
 end
 
-"Return count of duplicates for current key"
+"Return the number of values at the current key in an `MDB_DUPSORT` database."
 function count(cur::Cursor)
     countp = Ref(Csize_t(0))
     mdb_cursor_count(cur, countp)

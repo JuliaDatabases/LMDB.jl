@@ -210,7 +210,7 @@ end
 
 @checked function mdb_env_set_encrypt(env, func, key, size)
     @ccall liblmdb.mdb_env_set_encrypt(env::Ptr{MDB_env}, func::Ptr{MDB_enc_func},
-                                       key::Ptr{MDB_val}, size::Cuint)::Cint
+                                       key::Ref{MDB_val}, size::Cuint)::Cint
 end
 
 @checked function mdb_env_set_checksum(env, func, size)
@@ -291,18 +291,18 @@ end
 end
 
 @checked function mdb_get(txn, dbi, key, data)
-    @ccall liblmdb.mdb_get(txn::Ptr{MDB_txn}, dbi::MDB_dbi, key::Ptr{MDB_val},
-                           data::Ptr{MDB_val})::Cint
+    @ccall liblmdb.mdb_get(txn::Ptr{MDB_txn}, dbi::MDB_dbi, key::Ref{MDB_val},
+                           data::Ref{MDB_val})::Cint
 end
 
 @checked function mdb_put(txn, dbi, key, data, flags)
-    @ccall liblmdb.mdb_put(txn::Ptr{MDB_txn}, dbi::MDB_dbi, key::Ptr{MDB_val},
-                           data::Ptr{MDB_val}, flags::Cuint)::Cint
+    @ccall liblmdb.mdb_put(txn::Ptr{MDB_txn}, dbi::MDB_dbi, key::Ref{MDB_val},
+                           data::Ref{MDB_val}, flags::Cuint)::Cint
 end
 
 @checked function mdb_del(txn, dbi, key, data)
-    @ccall liblmdb.mdb_del(txn::Ptr{MDB_txn}, dbi::MDB_dbi, key::Ptr{MDB_val},
-                           data::Ptr{MDB_val})::Cint
+    @ccall liblmdb.mdb_del(txn::Ptr{MDB_txn}, dbi::MDB_dbi, key::Ref{MDB_val},
+                           data::Ref{MDB_val})::Cint
 end
 
 @checked function mdb_cursor_open(txn, dbi, cursor)
@@ -331,13 +331,13 @@ function mdb_cursor_is_db(cursor)
 end
 
 @checked function mdb_cursor_get(cursor, key, data, op)
-    @ccall liblmdb.mdb_cursor_get(cursor::Ptr{MDB_cursor}, key::Ptr{MDB_val},
-                                  data::Ptr{MDB_val}, op::MDB_cursor_op)::Cint
+    @ccall liblmdb.mdb_cursor_get(cursor::Ptr{MDB_cursor}, key::Ref{MDB_val},
+                                  data::Ref{MDB_val}, op::MDB_cursor_op)::Cint
 end
 
 @checked function mdb_cursor_put(cursor, key, data, flags)
-    @ccall liblmdb.mdb_cursor_put(cursor::Ptr{MDB_cursor}, key::Ptr{MDB_val},
-                                  data::Ptr{MDB_val}, flags::Cuint)::Cint
+    @ccall liblmdb.mdb_cursor_put(cursor::Ptr{MDB_cursor}, key::Ref{MDB_val},
+                                  data::Ref{MDB_val}, flags::Cuint)::Cint
 end
 
 @checked function mdb_cursor_del(cursor, flags)
@@ -349,19 +349,19 @@ end
 end
 
 function mdb_cmp(txn, dbi, a, b)
-    @ccall liblmdb.mdb_cmp(txn::Ptr{MDB_txn}, dbi::MDB_dbi, a::Ptr{MDB_val},
-                           b::Ptr{MDB_val})::Cint
+    @ccall liblmdb.mdb_cmp(txn::Ptr{MDB_txn}, dbi::MDB_dbi, a::Ref{MDB_val},
+                           b::Ref{MDB_val})::Cint
 end
 
 function mdb_dcmp(txn, dbi, a, b)
-    @ccall liblmdb.mdb_dcmp(txn::Ptr{MDB_txn}, dbi::MDB_dbi, a::Ptr{MDB_val},
-                            b::Ptr{MDB_val})::Cint
+    @ccall liblmdb.mdb_dcmp(txn::Ptr{MDB_txn}, dbi::MDB_dbi, a::Ref{MDB_val},
+                            b::Ref{MDB_val})::Cint
 end
 
 # typedef int ( MDB_msg_func ) ( const char * msg , void * ctx )
 const MDB_msg_func = Cvoid
 
-@checked function mdb_reader_list(env, func, ctx)
+@checked_nonnegative function mdb_reader_list(env, func, ctx)
     @ccall liblmdb.mdb_reader_list(env::Ptr{MDB_env}, func::Ptr{MDB_msg_func},
                                    ctx::Ptr{Cvoid})::Cint
 end
