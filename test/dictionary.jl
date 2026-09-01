@@ -127,6 +127,21 @@ mktempdir() do dir
     close(d)
 end
 
+@testset "ctor creates missing directories (#76)" begin
+    mktempdir() do dir
+        path = joinpath(dir, "nested", "mydb")
+        d = LMDBDict{String, Int}(path)
+        d["x"] = 1
+        @test d["x"] === 1
+        close(d)
+        @test isdir(path)
+        # readonly must not create anything
+        missing_path = joinpath(dir, "missing")
+        @test_throws LMDB.LMDBError LMDBDict{String, Int}(missing_path; readonly=true)
+        @test !isdir(missing_path)
+    end
+end
+
 @testset "env kwargs in LMDBDict ctor (#45)" begin
     mktempdir() do dir
         big = Csize_t(8) * 1024^3
