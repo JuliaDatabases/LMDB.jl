@@ -25,23 +25,9 @@ end
 Putting the same `(key, val)` pair twice silently no-ops (or raises
 `MDB_KEYEXIST` if `MDB_NODUPDATA` is set).
 
-## Why DUPSORT instead of value packing
-
-A common alternative is to pack a list into a single value
-(`key -> [v1, v2, v3]`) and read-modify-write on each update.
-DUPSORT wins when:
-
-- you want `O(log n)` insert/delete of a single value (vs. rewriting
-  the whole list),
-- you want sorted access to values without sorting in-process,
-- the per-key cardinality is large enough that value-packing pages
-  blow past `MDB_MAXKEYSIZE` or LMDB's overflow-page threshold,
-- you want range queries within a key's values
-  (`seek_range!` style).
-
-It loses if you need fast aggregate reads of every value at a key. For
-that case, use `MDB_DUPFIXED` (fixed-size duplicates), which stores
-values contiguously and returns them in batches.
+Unlike packing a collection into one value, `MDB_DUPSORT` lets LMDB insert,
+delete, and navigate individual sorted values. `MDB_DUPFIXED` additionally
+enables the raw `MDB_GET_MULTIPLE` cursor operations for fixed-size values.
 
 ## Navigation
 
@@ -65,7 +51,7 @@ next_nodup!(cur)                   # skip to next key, first dup → (b, c)
 | `next_dup!`        | `MDB_NEXT_DUP`     | yes | no, `nothing` past last dup |
 | `prev_dup!`        | `MDB_PREV_DUP`     | yes | no |
 | `next_nodup!`      | `MDB_NEXT_NODUP`   | jump out | yes (first dup of next key) |
-| `prev_nodup!`      | `MDB_PREV_NODUP`   | jump out | yes (first dup of previous key) |
+| `prev_nodup!`      | `MDB_PREV_NODUP`   | jump out | yes (last dup of previous key) |
 | `seek_first_dup!`  | `MDB_FIRST_DUP`    | first dup of current key | – |
 | `seek_last_dup!`   | `MDB_LAST_DUP`     | last dup of current key | – |
 

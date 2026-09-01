@@ -40,11 +40,9 @@ end
 close(d)
 ```
 
-Behind the scenes this opens an `Environment` with `MDB_NOTLS` (so
-multiple read transactions can coexist on a single thread) and a single
-default `Database`. Type conversion happens automatically for anything the
-`MDBValue` constructor accepts: `String`, `Vector{T}` of bitstype `T`,
-or any bitstype scalar.
+This opens an `Environment` with `MDB_NOTLS`, allowing multiple read
+transactions on one thread, and uses the main `Database`. Strings, contiguous
+arrays of bitstypes, and bitstype scalars can be stored directly.
 
 ## Picking a surface
 
@@ -61,7 +59,7 @@ control:
   [Databases](@ref) → [Cursors](@ref).
 - The C API (`mdb_*`, `MDB_*`, `unchecked_mdb_*`) is the raw
   `@ccall` surface. `MDBValue`, `MDBArg`, and `MDBValueIO` glue Julia
-  values to `Ptr{MDB_val}` and let custom decoders plug in via
+  values to `MDB_val` and let custom decoders plug in via
   `Base.read(io, T)`. Reach for the [Low-level bindings](@ref) only
   when integrating with a custom data layout or when the wrappers
   introduce overhead you can't afford.
@@ -79,11 +77,9 @@ with a finalizer:
 | `LMDBDict` | `close` env + dbi | – |
 
 Parent references pin the lifetime: a `Cursor` keeps its `Transaction`
-alive, which keeps its `Environment` alive. `close`, `commit`, and
-`abort` are idempotent: calling them twice, or on a handle that was
-never opened, is a silent no-op. An abandoned write txn (say, from a
-`for … break` over an `LMDBDict`, or any error path) gets reclaimed
-when GC runs.
+alive, which keeps its `Environment` alive. Repeated `close`, `commit`, and
+`abort` calls are no-ops. Finalizers eventually release abandoned handles;
+use do-blocks for deterministic cleanup.
 
 The do-block constructors are usually what you want:
 
@@ -99,7 +95,7 @@ end                           # closes env
 
 ## Errors
 
-Every LMDB-internal error surfaces as an `LMDBError`. For the usual
-"missing key" case, prefer the no-throw paths:
+Checked LMDB calls throw `LMDBError`. For a missing key, prefer the no-throw
+path:
 `get(txn, dbi, key, T, default)` falls back to `default` (use
 `nothing` for the `Union{T,Nothing}` shape).

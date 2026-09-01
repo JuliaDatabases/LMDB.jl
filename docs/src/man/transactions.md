@@ -4,9 +4,8 @@
 CurrentModule = LMDB
 ```
 
-Every LMDB operation runs inside a transaction. Transactions are either
-read-only (any number can run concurrently) or read-write (one at a
-time per environment).
+Every database operation runs inside a transaction. An environment permits
+multiple readers, up to `maxreaders`, and one writer at a time.
 
 ## Starting a transaction
 
@@ -15,8 +14,7 @@ txn = Transaction(env)                          # read-write
 txn = Transaction(env; flags = LMDB.MDB_RDONLY) # read-only
 ```
 
-LMDB can hold one writer plus an unlimited number of readers
-concurrently. Read txns do not block writers and vice versa.
+Readers do not block the writer, but they delay reuse of old database pages.
 
 The do-block form commits on normal return and aborts on throw:
 
@@ -31,11 +29,10 @@ end                                       # commits if no throw
 
 ## Commit / abort
 
-`commit(txn)` writes the txn's modifications to disk and frees the
-handle; `abort(txn)` discards them. Both are idempotent: calling them
-twice, or on a never-started txn, is a silent no-op. `Transaction`'s
-finalizer calls `abort`, so an abandoned write txn eventually releases
-LMDB's exclusive write mutex.
+`commit(txn)` publishes the transaction's modifications and frees the handle;
+durability depends on the environment's synchronization flags. `abort(txn)`
+discards the modifications. Repeated calls are no-ops. A finalizer aborts an
+abandoned live transaction.
 
 After `commit` or `abort`, the txn (and any cursors created against it)
 must not be used. Continuing to call `mdb_*` against a freed handle is
@@ -56,15 +53,15 @@ for batch in batches
             handle(k, v)
         end
     end
-    reset(txn)        # release the reader slot but keep the handle
-    renew(txn)        # acquire a fresh slot; sees newly-committed writes
+    reset(txn)        # release the snapshot but keep the handle
+    renew(txn)        # acquire a new snapshot
 end
 abort(txn)
 ```
 
-`reset` is only valid on read-only txns. `renew` fetches a fresh
-database snapshot. Without it, the parked txn won't see writes that
-landed in the meantime.
+`reset` is only valid on a non-nested read-only transaction. With
+`MDB_NOTLS`, its reader slot remains reserved for the handle. `renew` acquires
+a new snapshot.
 
 ## Sub-transactions
 
@@ -89,13 +86,13 @@ Transaction(env) do parent
 end
 ```
 
-LMDB does not support nested *read-only* txns; the parent must be a
-write txn.
+The parent must not be used while a child is active. Consult `mdb_txn_begin`
+for the additional restrictions on read-only children.
 
 ## Reader slots
 
 Each open read txn occupies one reader slot. The default `maxreaders`
-is small (126). Raise it via `Environment(...; maxreaders = N)` for
+is 126. Raise it via `Environment(...; maxreaders = N)` for
 high-concurrency read workloads, or call [`reader_check(env)`](@ref) to
 reap slots left behind by crashed processes.
 

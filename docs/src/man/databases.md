@@ -24,9 +24,9 @@ Database(txn, "users") do dbi
 end
 ```
 
-In practice you'll rarely *want* to close a Database handle explicitly. The
-env owns it, and `mdb_dbi_close` is documented as rarely useful. The
-env's finalizer cascades through any open Database handles.
+A committed database handle can be reused by other transactions in the same
+environment. Close it before closing the environment if it is no longer
+needed.
 
 ## Database flags
 
@@ -51,9 +51,9 @@ get(txn, dbi, key, T)               # throws LMDBError(MDB_NOTFOUND) on miss
 get(txn, dbi, key, T, default)      # returns `default` on miss
 ```
 
-`T` is anything `read(::LMDB.MDBValueIO, ::Type{T})` knows how to
-decode: `String`, `Vector{E}` for any bitstype `E`, or any bitstype
-scalar.
+`T` can be `String`, `Vector{E}` for bitstype `E`, or a type supported by
+Base's fixed-width `read(io, T)`. Define `Base.read(io::IO, ::Type{T})` for a
+custom type.
 
 ```julia
 get(txn, dbi, "name", String, nothing)              # → Union{String, Nothing}
@@ -81,7 +81,7 @@ Useful write flags:
 |------|---------|
 | `MDB_NOOVERWRITE` | fail with `MDB_KEYEXIST` if `key` is already present |
 | `MDB_NODUPDATA` | (DUPSORT) fail if the `(key, val)` pair already exists |
-| `MDB_APPEND` | append; only valid if the new key sorts after every existing key. Much faster for sorted bulk loads |
+| `MDB_APPEND` | append without key comparisons; keys must already be sorted |
 
 ```julia
 # Bulk import in sorted order:
@@ -97,11 +97,10 @@ end
 `replace!` and `pop!` do the read-modify pair inside the same
 transaction, so there is no time-of-check / time-of-use gap.
 
-## `put_reserved!`: write directly into the mmap
+## `put_reserved!`: fill LMDB-managed storage
 
 When the value is large or assembled from multiple sources, you can
-skip the intermediate `Vector{UInt8}` round-trip and write straight
-into the LMDB-allocated page:
+skip an intermediate value buffer and fill LMDB's reserved storage:
 
 ```julia
 put_reserved!(txn, dbi, key, sizeof(header) + length(payload)) do buf
@@ -110,12 +109,9 @@ put_reserved!(txn, dbi, key, sizeof(header) + length(payload)) do buf
 end
 ```
 
-`buf` is an `unsafe_wrap` over the LMDB write buffer. It is only valid
-inside the callback, and only inside the surrounding write txn; don't
-escape it.
-
-`put_reserved!` is the equivalent of heed's `Database::put_reserved`.
-It is incompatible with DUPSORT.
+`buf` is an `unsafe_wrap` over LMDB-managed memory. Fill every byte and do not
+retain the vector after the callback. `MDB_RESERVE` is incompatible with
+`MDB_DUPSORT`.
 
 ## Stats
 
@@ -123,8 +119,8 @@ It is incompatible with DUPSORT.
 s = stat(txn, dbi)
 @show s.entries, s.depth, s.leaf_pages, s.psize
 
-# rough on-disk byte count:
-live = (s.branch_pages + s.leaf_pages + s.overflow_pages) * s.psize
+# pages allocated to this database's B-tree:
+allocated = (s.branch_pages + s.leaf_pages + s.overflow_pages) * s.psize
 ```
 
 ## Dropping a database
@@ -134,6 +130,5 @@ LMDB.drop(txn, dbi)                 # empty the DB (handle still valid)
 LMDB.drop(txn, dbi; delete = true)  # delete the DB and close the handle
 ```
 
-For named sub-DBs, `delete = true` removes the entry from the env's
-main DB. For the main DB itself, `delete = true` is treated as
-`delete = false`, since LMDB cannot delete its own root.
+For a named database, `delete=true` removes its entry from the main database
+and invalidates the handle. It is not valid for the main database itself.

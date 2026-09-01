@@ -23,9 +23,10 @@ Writes (`setindex!`, `delete!`, `pop!`, `empty!`) likewise. `delete!`
 silently no-ops on a missing key, matching `Base.delete!`'s "if any"
 contract.
 
-Everything `AbstractDict` derives (`merge!`, `merge`, `mergewith!`,
-`filter!`, `filter`, `==`, `isequal`, `hash`, `in(::Pair, d)`,
-`copy(d)`) comes along for free.
+`merge!`, `mergewith!`, and `filter!` are specialized to use one write
+transaction. `Dict(d)` creates an in-memory copy. `empty(d)`, `copy(d)`, and
+out-of-place operations that require `empty(d)` throw because a new
+`LMDBDict` needs a filesystem path.
 
 `LMDBDict` iterates in lexicographic key order, which is stricter than
 `Base.Dict`'s no-order promise.

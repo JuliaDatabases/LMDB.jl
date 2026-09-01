@@ -10,10 +10,9 @@ plain structs (`LMDB.MDB_val`, `LMDB.MDB_stat`, `LMDB.MDB_envinfo`), the
 cursor-op `@cenum` (`LMDB.MDB_cursor_op`), and `LMDB.MDB_*` flag/status
 constants.
 
-Everything is public-but-unexported: refer to it as `LMDB.mdb_env_create`,
-`LMDB.MDB_NOTLS`, `LMDB.MDB_val`. The bindings in this section auto-throw
-on a non-zero status. Each one is paired with an `unchecked_*` companion
-for callers that need to inspect the raw status code.
+Everything is unexported: refer to it as `LMDB.mdb_env_create`,
+`LMDB.MDB_NOTLS`, or `LMDB.MDB_val`. Bindings with LMDB's usual 0-success
+convention throw on a nonzero status and have an `unchecked_*` companion.
 
 ## The auto-throw convention
 
@@ -39,12 +38,15 @@ Bindings that return non-status data (`mdb_strerror`, `mdb_version`,
 `mdb_modunload`, `mdb_modsetup`) are left bare, since there is
 nothing to check.
 
+`mdb_reader_list` throws only for a negative result, matching its documented
+return convention; its unchecked companion returns the raw value.
+
 ## Customisation point: `MDBValueIO`
 
 `get`, `key`, `value`, `item`, typed `walk`, `pop!`, and
 `replace!` all go through `read(::MDBValueIO, T)` to decode an
-`MDB_val` into a Julia value. Define a `Base.read` method on
-`MDBValueIO` to plug in a custom representation. See [Cursors](@ref)
+`MDB_val` into a Julia value. Prefer defining `Base.read(io::IO, ::Type{T})`
+for a custom representation. See [Cursors](@ref)
 for a worked example.
 
 ```@docs
