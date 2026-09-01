@@ -5,7 +5,9 @@ export LMDBDict
     LMDBDict{K,V}(path; readonly, rdahead, mapsize, readers, dbs)
 
 A persistent `AbstractDict{K,V}` backed by a single LMDB environment
-and its main database. Keys and values are stored as raw bytes. Built-in
+and its main database. Unless `readonly` is set, the directory at
+`path` is created if it does not exist. Keys and values are stored as
+raw bytes. Built-in
 decoders support `String`, vectors of bitstypes, and Base's fixed-width
 primitive reads; define `Base.read(io::IO, ::Type{T})` for other types.
 
@@ -33,6 +35,7 @@ function LMDBDict{K,V}(path::String; readonly = false, rdahead = false,
     envflags = Cuint(MDB_NOTLS)
     rdahead || (envflags |= Cuint(MDB_NORDAHEAD))
     readonly && (envflags |= Cuint(MDB_RDONLY))
+    readonly || mkpath(path)
     env = LMDB.Environment(path; mapsize, maxreaders = readers, maxdbs = dbs,
                            flags = envflags)
     dbi = Transaction(env) do txn
