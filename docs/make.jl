@@ -1,4 +1,5 @@
 using Documenter, LMDB
+using DocumenterCodeBlocks: CodeBlocks
 
 DocMeta.setdocmeta!(LMDB, :DocTestSetup, :(using LMDB); recursive = true)
 
@@ -9,6 +10,9 @@ function main()
         sitename = "LMDB.jl",
         authors = "Art Wild, Fabian Gans, Tim Besard",
         repo = Documenter.Remotes.GitHub("JuliaDatabases", "LMDB.jl"),
+        plugins = [
+            CodeBlocks(; line_counter = :named),
+        ],
         format = Documenter.HTML(prettyurls = ci,
                                  edit_link = "main"),
         modules = [LMDB],
