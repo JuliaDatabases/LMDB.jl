@@ -31,9 +31,11 @@ function Transaction(env::Environment; flags::Integer = zero(Cuint),
     p = parent === nothing ? C_NULL : parent
     mdb_txn_begin(env, p, Cuint(flags), txn_ref)
     txn = Transaction(txn_ref[], env, Dict{Ptr{MDB_cursor},WeakRef}())
-    # Allow `close(env)` to end this transaction first.
-    push!(env.txns, WeakRef(txn))
+    # Attach the finalizer first, so that a transaction is ended even if
+    # registering it throws.
     finalizer(_finalize_txn, txn)
+    # Allow `close(env)` to end this transaction first.
+    @lock env.txns_lock push!(env.txns, WeakRef(txn))
     return txn
 end
 

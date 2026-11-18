@@ -8,6 +8,8 @@ mutable struct Environment
     # LMDB requires transactions to end before their environment is closed.
     # Weak references let transactions remain eligible for finalization.
     txns::Vector{WeakRef}
+    # Transactions may begin on any thread.
+    txns_lock::Threads.SpinLock
 end
 
 Base.unsafe_convert(::Type{Ptr{MDB_env}}, e::Environment) = e.handle
@@ -35,7 +37,7 @@ function Environment(path::AbstractString; mapsize::Union{Integer,Nothing} = not
                      mode::Integer = mode_t(0o755))
     env_ref = Ref{Ptr{MDB_env}}()
     mdb_env_create(env_ref)
-    env = Environment(env_ref[], "", WeakRef[])
+    env = Environment(env_ref[], "", WeakRef[], Threads.SpinLock())
     finalizer(close, env)
     try
         pagesize   === nothing || (env[:PageSize] = pagesize)
@@ -70,11 +72,11 @@ end
 function close(env::Environment)
     env.handle == C_NULL && return nothing
     # End tracked transactions before invalidating all child handles.
-    for wr in env.txns
+    txns = @lock env.txns_lock splice!(env.txns, 1:length(env.txns))
+    for wr in txns
         t = wr.value
         t isa Transaction && t.handle != C_NULL && abort(t)
     end
-    empty!(env.txns)
     mdb_env_close(env)
     env.handle = C_NULL
     env.path = ""
