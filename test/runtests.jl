@@ -14,4 +14,5 @@ using Test, LMDB
     include("dupsort.jl")
     include("dictionary.jl")
     include("integration.jl")
+    include("threads.jl")
 end
